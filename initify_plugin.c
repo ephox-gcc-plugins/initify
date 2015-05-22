@@ -90,6 +90,9 @@ static void search_local_strs(void)
 
 		if (init_val == NULL_TREE)
 			continue;
+		if (strcmp(DECL_NAME_POINTER(var), "__func__"))
+			continue;
+
 		str = get_string_cst(init_val);
 		if (str == NULL_TREE)
 			continue;
