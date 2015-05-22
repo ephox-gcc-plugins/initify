@@ -21,6 +21,55 @@ static struct plugin_info initify_plugin_info = {
 	.help		= "initify_plugin\n",
 };
 
+static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args, int __unused flags, bool *no_add_attrs)
+{
+	enum tree_code code = TREE_CODE(*node);
+
+	switch (code) {
+	case FUNCTION_DECL:
+	case FUNCTION_TYPE:
+	case METHOD_TYPE:
+	case TYPE_DECL:
+		break;
+	default:
+		*no_add_attrs = true;
+		debug_tree(*node);
+		error("%s: %qE attribute only applies to functions", __func__, name);
+		return NULL_TREE;
+	}
+
+	for (; args; args = TREE_CHAIN(args)) {
+		tree position = TREE_VALUE(args);
+
+		if (TREE_CODE(position) != INTEGER_CST) {
+			error("%s: parameter isn't an integer", __func__);
+			debug_tree(args);
+			*no_add_attrs = true;
+			return NULL_TREE;
+		}
+	}
+	return NULL_TREE;
+}
+
+static struct attribute_spec nocapture_attr = {
+	.name				= "nocapture",
+	.min_length			= 1,
+	.max_length			= -1,
+	.decl_required			= true,
+	.type_required			= false,
+	.function_type_required		= false,
+	.handler			= handle_nocapture_attribute,
+#if BUILDING_GCC_VERSION >= 4007
+	.affects_type_identity		= false
+#endif
+};
+
+static void register_attributes(void __unused *event_data, void __unused *data)
+{
+	register_attribute(&nocapture_attr);
+}
+
+
 static bool has__init_attribute(const_tree decl)
 {
 	const_tree section;
@@ -137,14 +186,31 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 	return TREE_OPERAND(decl, 0);
 }
 
+static bool is_in_nocapture_attr_value(const_gimple stmt, unsigned int num)
+{
+	unsigned int attr_arg_val = 0;
+	tree attr, attr_val;
+	const_tree fndecl = gimple_call_fndecl(stmt);
+
+	gcc_assert(DECL_ABSTRACT_ORIGIN(fndecl) == NULL_TREE);
+	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
+
+	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
+		attr_arg_val = (unsigned int)tree_to_uhwi(TREE_VALUE(attr_val));
+
+		if (attr_arg_val == num + 1)
+			return true;
+	}
+
+	gcc_assert(attr_arg_val != 0);
+
+	// vararg
+	return attr_arg_val < num + 1;
+}
+
 static void search_str_param(gcall *stmt)
 {
 	unsigned int num;
-	const_tree fndecl;
-
-	fndecl = gimple_call_fndecl(stmt);
-	if (fndecl == NULL_TREE)
-		return;
 
 	for (num = 0; num < gimple_call_num_args(stmt); num++) {
 		tree var, str, arg = gimple_call_arg(stmt, num);
@@ -153,10 +219,24 @@ static void search_str_param(gcall *stmt)
 		if (str == NULL_TREE)
 			continue;
 
+		if (!is_in_nocapture_attr_value(stmt, num))
+			continue;
+
 		var = create_tmp_assign(stmt, num);
 		if (set__initconst_attr(var))
 			inform(gimple_location(stmt), "initified function arg: %s: [%s]", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
 	}
+}
+
+static bool has_nocapture_attr(const gcall *stmt)
+{
+	const_tree attr, fndecl = gimple_call_fndecl(stmt);
+
+	if (fndecl == NULL_TREE)
+		return false;
+
+	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
+	return attr != NULL_TREE;
 }
 
 static void search_const_strs(void)
@@ -169,7 +249,9 @@ static void search_const_strs(void)
 		for (gsi = gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi)) {
 			gimple stmt = gsi_stmt(gsi);
 
-			if (is_gimple_call(stmt))
+			if (!is_gimple_call(stmt))
+				continue;
+			if (has_nocapture_attr(as_a_gcall(stmt)))
 				search_str_param(as_a_gcall(stmt));
 		}
 	}
@@ -260,6 +342,7 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 
 	register_callback(plugin_name, PLUGIN_INFO, NULL, &initify_plugin_info);
 	register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &initify_plugin_pass_info);
+	register_callback(plugin_name, PLUGIN_ATTRIBUTES, register_attributes, NULL);
 
 	return 0;
 }
