@@ -101,13 +101,11 @@ static void search_local_strs(void)
 
 static tree create_tmp_assign(gcall *stmt, unsigned int num)
 {
-	tree str, type, new_arg, decl, arg = gimple_call_arg(stmt, num);
+	tree str, type, decl, arg = gimple_call_arg(stmt, num);
 
 	str = get_string_cst(arg);
 	decl = build_decl(DECL_SOURCE_LOCATION(current_function_decl), VAR_DECL, create_tmp_var_name("cicus"), TREE_TYPE(str));
 
-	TYPE_SIZES_GIMPLIFIED(TREE_TYPE(decl)) = 1;
-	TYPE_SIZES_GIMPLIFIED(TYPE_DOMAIN(TREE_TYPE(decl))) = 1;
 	type = TREE_TYPE(TREE_TYPE(decl));
 	TYPE_READONLY(type) = 1;
 	TREE_PUBLIC(type) = 0;
@@ -115,32 +113,22 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 	DECL_INITIAL(decl) = str;
 	DECL_CONTEXT(decl) = current_function_decl;
 	DECL_ARTIFICIAL(decl) = 1;
-#if BUILDING_GCC_VERSION <= 4009
-	DECL_ABSTRACT(decl) = 0;
-#endif
 
 	TREE_STATIC(decl) = 1;
 	TREE_READONLY(decl) = 1;
 	TREE_ADDRESSABLE(decl) = 1;
 	TREE_USED(decl) = 1;
 
-#if BUILDING_GCC_VERSION <= 4007
-	lang_hooks.dup_lang_specific_decl(decl);
-	create_var_ann(decl);
 	varpool_mark_needed_node(varpool_node(decl));
 	add_referenced_var(decl);
-#endif
-
-#if BUILDING_GCC_VERSION >= 4006
 	add_local_decl(cfun, decl);
-#endif
 	varpool_finalize_decl(decl);
 
-	new_arg = build_unary_op(DECL_SOURCE_LOCATION(current_function_decl), ADDR_EXPR, decl, 0);
-	gimple_call_set_arg(stmt, num, new_arg);
+	decl = build_unary_op(DECL_SOURCE_LOCATION(current_function_decl), ADDR_EXPR, decl, 0);
+	gimple_call_set_arg(stmt, num, decl);
 	update_stmt(stmt);
 
-	return decl;
+	return TREE_OPERAND(decl, 0);
 }
 
 static void search_str_param(gcall *stmt)
