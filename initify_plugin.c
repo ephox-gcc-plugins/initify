@@ -29,9 +29,8 @@ static bool has__init_attribute(const_tree decl)
 	section = lookup_attribute("section", DECL_ATTRIBUTES(decl));
 	if (!section)
 		return false;
-	if (!TREE_VALUE(section))
-		return false;
 
+	gcc_assert(TREE_VALUE(section));
 	for (attr_value = TREE_VALUE(section); attr_value; attr_value = TREE_CHAIN(attr_value)) {
 		const char *str = TREE_STRING_POINTER(TREE_VALUE(attr_value));
 
@@ -119,10 +118,14 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 	TREE_ADDRESSABLE(decl) = 1;
 	TREE_USED(decl) = 1;
 
-	varpool_mark_needed_node(varpool_node(decl));
 	add_referenced_var(decl);
 	add_local_decl(cfun, decl);
-	varpool_finalize_decl(decl);
+
+	varpool_add_new_variable(decl);
+	varpool_mark_needed_node(varpool_node(decl));
+
+	DECL_CHAIN(decl) = BLOCK_VARS(DECL_INITIAL(current_function_decl));
+	BLOCK_VARS(DECL_INITIAL (current_function_decl)) = decl;
 
 	decl = build_unary_op(DECL_SOURCE_LOCATION(current_function_decl), ADDR_EXPR, decl, 0);
 	gimple_call_set_arg(stmt, num, decl);
