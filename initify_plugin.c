@@ -37,6 +37,8 @@ static bool has__init_attribute(const_tree decl)
 
 		if (!strncmp(str, ".init.", 6))
 			return true;
+		if (!strncmp(str, ".exit.", 6))
+			return true;
 	}
 
 	return false;
