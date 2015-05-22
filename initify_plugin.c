@@ -77,11 +77,7 @@ static bool set__initconst_attr(tree decl)
 	if (has__init_attribute(decl))
 		return false;
 
-#if BUILDING_GCC_VERSION < 5000
-	DECL_SECTION_NAME(decl) = build_string(13, ".init.rodata");
-#else
 	set_decl_section_name(decl, ".init.rodata");
-#endif
 	return true;
 }
 
@@ -99,7 +95,7 @@ static void search_local_strs(void)
 		if (str == NULL_TREE)
 			continue;
 		if (set__initconst_attr(var))
-			fprintf(stderr, "initify: %s: %s\n", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
+			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
 	}
 }
 
@@ -165,7 +161,7 @@ static void search_str_param(gcall *stmt)
 
 		var = create_tmp_assign(stmt, num);
 		if (set__initconst_attr(var))
-			fprintf(stderr, "initify: %s: %s\n", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
+			inform(gimple_location(stmt), "initified function arg: %s: [%s]", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
 	}
 }
 
@@ -197,6 +193,7 @@ static unsigned int handle_function(void)
 }
 
 #if BUILDING_GCC_VERSION >= 4009
+namespace {
 static const struct pass_data initify_plugin_pass_data = {
 #else
 static struct gimple_opt_pass initify_plugin_pass = {
@@ -230,7 +227,6 @@ static struct gimple_opt_pass initify_plugin_pass = {
 };
 
 #if BUILDING_GCC_VERSION >= 4009
-namespace {
 class initify_plugin_pass : public gimple_opt_pass {
 public:
 	initify_plugin_pass() : gimple_opt_pass(initify_plugin_pass_data, g) {}
@@ -241,16 +237,17 @@ public:
 #endif
 };
 }
-#endif
 
 static struct opt_pass *make_initify_plugin_pass(void)
 {
-#if BUILDING_GCC_VERSION >= 4009
 	return new initify_plugin_pass();
-#else
-	return &initify_plugin_pass.pass;
-#endif
 }
+#else
+static struct opt_pass *make_initify_plugin_pass(void)
+{
+	return &initify_plugin_pass.pass;
+}
+#endif
 
 int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version *version)
 {
