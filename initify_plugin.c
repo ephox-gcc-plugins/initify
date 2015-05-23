@@ -29,8 +29,16 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 	case FUNCTION_DECL:
 	case FUNCTION_TYPE:
 	case METHOD_TYPE:
-	case TYPE_DECL:
 		break;
+	case TYPE_DECL: {
+		const_tree fntype = TREE_TYPE(*node);
+
+		if (TREE_CODE(fntype) == POINTER_TYPE)
+			fntype = TREE_TYPE(fntype);
+		if (TREE_CODE(fntype) == FUNCTION_TYPE || TREE_CODE(fntype) == METHOD_TYPE)
+			break;
+		// FALLTHROUGH
+	}
 	default:
 		*no_add_attrs = true;
 		debug_tree(*node);
