@@ -25,6 +25,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 {
 	enum tree_code code = TREE_CODE(*node);
 
+	*no_add_attrs = true;
 	switch (code) {
 	case FUNCTION_DECL:
 	case FUNCTION_TYPE:
@@ -40,9 +41,8 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		// FALLTHROUGH
 	}
 	default:
-		*no_add_attrs = true;
-		debug_tree(*node);
 		error("%s: %qE attribute only applies to functions", __func__, name);
+		debug_tree(*node);
 		return NULL_TREE;
 	}
 
@@ -52,10 +52,10 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		if (TREE_CODE(position) != INTEGER_CST) {
 			error("%s: parameter isn't an integer", __func__);
 			debug_tree(args);
-			*no_add_attrs = true;
 			return NULL_TREE;
 		}
 	}
+	*no_add_attrs = false;
 	return NULL_TREE;
 }
 
