@@ -5,7 +5,8 @@
  * Homepage:
  * https://github.com/ephox-gcc-plugins/initify
  *
- * Move string constants referenced in __init functions only to __initconst
+ * Move string constants (__func__ and function string arguments marked by the nocapture attribute)
+ * only referenced in __init/__exit functions to __initconst/__exitconst sections.
  *
  * Usage:
  * $ make
