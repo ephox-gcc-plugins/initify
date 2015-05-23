@@ -69,27 +69,26 @@ static void register_attributes(void __unused *event_data, void __unused *data)
 	register_attribute(&nocapture_attr);
 }
 
-
-static bool has__init_attribute(const_tree decl)
+static const char *get_init_exit_section(const_tree decl)
 {
 	const_tree section;
 	tree attr_value;
 
 	section = lookup_attribute("section", DECL_ATTRIBUTES(decl));
 	if (!section)
-		return false;
+		return NULL;
 
 	gcc_assert(TREE_VALUE(section));
 	for (attr_value = TREE_VALUE(section); attr_value; attr_value = TREE_CHAIN(attr_value)) {
 		const char *str = TREE_STRING_POINTER(TREE_VALUE(attr_value));
 
 		if (!strncmp(str, ".init.", 6))
-			return true;
+			return str;
 		if (!strncmp(str, ".exit.", 6))
-			return true;
+			return str;
 	}
 
-	return false;
+	return NULL;
 }
 
 static tree get_string_cst(tree var)
@@ -118,18 +117,24 @@ static tree get_string_cst(tree var)
 	return NULL_TREE;
 }
 
-static bool set__initconst_attr(tree decl)
+static bool set_init_exit_section(tree decl, bool initexit)
 {
+	const char *str;
+
 	gcc_assert(DECL_P(decl));
 
-	if (has__init_attribute(decl))
+	str = get_init_exit_section(decl);
+	if (str)
 		return false;
 
-	set_decl_section_name(decl, ".init.rodata");
+	if (initexit)
+		set_decl_section_name(decl, ".init.rodata");
+	else
+		set_decl_section_name(decl, ".exit.rodata");
 	return true;
 }
 
-static void search_local_strs(void)
+static void search_local_strs(bool initexit)
 {
 	unsigned int i;
 	tree var;
@@ -143,9 +148,9 @@ static void search_local_strs(void)
 			continue;
 
 		str = get_string_cst(init_val);
-		if (str == NULL_TREE)
-			continue;
-		if (set__initconst_attr(var))
+		gcc_assert(str);
+
+		if (set_init_exit_section(var, initexit))
 			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
 	}
 }
@@ -208,7 +213,7 @@ static bool is_in_nocapture_attr_value(const_gimple stmt, unsigned int num)
 	return attr_arg_val < num + 1;
 }
 
-static void search_str_param(gcall *stmt)
+static void search_str_param(gcall *stmt, bool initexit)
 {
 	unsigned int num;
 
@@ -223,7 +228,7 @@ static void search_str_param(gcall *stmt)
 			continue;
 
 		var = create_tmp_assign(stmt, num);
-		if (set__initconst_attr(var))
+		if (set_init_exit_section(var, initexit))
 			inform(gimple_location(stmt), "initified function arg: %s: [%s]", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
 	}
 }
@@ -239,7 +244,7 @@ static bool has_nocapture_attr(const gcall *stmt)
 	return attr != NULL_TREE;
 }
 
-static void search_const_strs(void)
+static void search_const_strs(bool initexit)
 {
 	basic_block bb;
 
@@ -252,18 +257,22 @@ static void search_const_strs(void)
 			if (!is_gimple_call(stmt))
 				continue;
 			if (has_nocapture_attr(as_a_gcall(stmt)))
-				search_str_param(as_a_gcall(stmt));
+				search_str_param(as_a_gcall(stmt), initexit);
 		}
 	}
 }
 
 static unsigned int handle_function(void)
 {
-	if (!has__init_attribute(current_function_decl))
+	bool initexit;
+	const char *section = get_init_exit_section(current_function_decl);
+
+	if (!section)
 		return 0;
 
-	search_local_strs();
-	search_const_strs();
+	initexit = !strncmp(section, ".init.", 6);
+	search_local_strs(initexit);
+	search_const_strs(initexit);
 
 	return 0;
 }
