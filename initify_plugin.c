@@ -359,7 +359,7 @@ static unsigned int initify_section_type_flags(tree decl, const char *name, int 
 	return old_section_type_flags(decl, name, reloc);
 }
 
-static void initify_start_unit(void *gcc_data, void *user_data)
+static void initify_start_unit(void __unused *gcc_data, void __unused *user_data)
 {
 	old_section_type_flags = targetm.section_type_flags;
 	targetm.section_type_flags = initify_section_type_flags;
