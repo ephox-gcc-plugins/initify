@@ -24,6 +24,8 @@ static struct plugin_info initify_plugin_info = {
 
 static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args, int __unused flags, bool *no_add_attrs)
 {
+	tree orig_attr, arg;
+
 	*no_add_attrs = true;
 	switch (TREE_CODE(*node)) {
 	case FUNCTION_DECL:
@@ -45,16 +47,22 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		return NULL_TREE;
 	}
 
-	for (; args; args = TREE_CHAIN(args)) {
-		tree position = TREE_VALUE(args);
+	for (arg = args; arg; arg = TREE_CHAIN(arg)) {
+		tree position = TREE_VALUE(arg);
 
 		if (TREE_CODE(position) != INTEGER_CST) {
 			error("%s: parameter isn't an integer", __func__);
-			debug_tree(args);
+			debug_tree(arg);
 			return NULL_TREE;
 		}
 	}
-	*no_add_attrs = false;
+
+	orig_attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(*node));
+	if (orig_attr)
+		chainon(TREE_VALUE(orig_attr), args);
+	else
+		*no_add_attrs = false;
+
 	return NULL_TREE;
 }
 
@@ -219,15 +227,28 @@ static bool is_vararg(const_tree fn)
 	return type != void_type_node;
 }
 
+// __printf(1, 0), 0: turn off the varargs checking
+static bool check_varargs(const_tree attr)
+{
+	tree attr_val;
+
+	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
+		if (TREE_VALUE(attr_val) == integer_zero_node)
+			return false;
+	}
+	return true;
+}
+
 static bool is_in_nocapture_attr_value(const_gimple stmt, unsigned int num)
 {
 	unsigned int attr_arg_val = 0;
-	tree attr, attr_val;
+	tree attr_val;
+	const_tree attr;
 	const_tree fndecl = gimple_call_fndecl(stmt);
 
 	gcc_assert(DECL_ABSTRACT_ORIGIN(fndecl) == NULL_TREE);
-	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 
+	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
 		attr_arg_val = (unsigned int)tree_to_uhwi(TREE_VALUE(attr_val));
 
@@ -235,10 +256,11 @@ static bool is_in_nocapture_attr_value(const_gimple stmt, unsigned int num)
 			return true;
 	}
 
-	gcc_assert(attr_arg_val != 0);
-
-	// vararg
-	return attr_arg_val < num + 1 && is_vararg(fndecl);
+	if (!is_vararg(fndecl))
+		return false;
+	if (!check_varargs(attr))
+		return false;
+	return attr_arg_val < num + 1;
 }
 
 static void search_str_param(gcall *stmt, bool initexit)

@@ -1,12 +1,15 @@
 /* result:
-test.c:43:21: note: initified local var: print_init: print_init
-test.c:44:14: note: initified function arg: print_init: [YES %s]
-test.c:44:14: note: initified function arg: print_init: [YES_nyuszimuszi
+
+test.c:62:21: note: initified local var: print_init: print_init
+test.c:63:14: note: initified function arg: print_init: [YES %s]
+test.c:63:14: note: initified function arg: print_init: [YES_nyuszimuszi
 ]
-test.c:46:14: note: initified function arg: print_init: [YES %s %s %s]
-test.c:46:14: note: initified function arg: print_init: [YES_FFF]
-test.c:46:14: note: initified function arg: print_init: [YES_GGG]
-test.c:46:14: note: initified function arg: print_init: [YES_HHH]
+test.c:65:14: note: initified function arg: print_init: [YES %s %s %s]
+test.c:65:14: note: initified function arg: print_init: [YES_FFF]
+test.c:65:14: note: initified function arg: print_init: [YES_GGG]
+test.c:65:14: note: initified function arg: print_init: [YES_HHH]
+test.c:66:24: note: initified function arg: print_init: [YES rrrrr]
+test.c:66:24: note: initified function arg: print_init: [YES %s DDDD]
 
 objdump -s -j .init.rodata.str test
  */
@@ -21,6 +24,17 @@ objdump -s -j .init.rodata.str test
 #define __initconst __constsection(.init.rodata)
 
 #define __printf(a, b) __attribute__((nocapture(a, b)))
+
+int __attribute__((noinline)) __printf(3, 0) __attribute__((nocapture(2))) print_vararg_no_vararg(const char *d, const char *a, const char *str, ...)
+{
+	va_list args;
+
+	va_start(args, str);
+	printf("%s\n", va_arg(args, const char *));
+	va_end(args);
+
+	return printf(d);
+}
 
 int __attribute__((noinline)) __attribute__((nocapture(2))) print_vararg(const char *d, const char *str, ...)
 {
@@ -51,6 +65,7 @@ void __init print_init(const char *str)
 	print_simple("YES %s", "NO_asd", "YES_nyuszimuszi\n", "NO_rrrrr");
 	printf("NO cica\n");
 	print_vararg("NO_aaa", "YES %s %s %s", "YES_FFF", "YES_GGG", "YES_HHH");
+	print_vararg_no_vararg("NO_ttt", "YES rrrrr", "YES %s DDDD", "NO_zzzz");
 }
 
 int main(void)
