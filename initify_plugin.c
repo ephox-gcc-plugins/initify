@@ -24,10 +24,8 @@ static struct plugin_info initify_plugin_info = {
 
 static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args, int __unused flags, bool *no_add_attrs)
 {
-	enum tree_code code = TREE_CODE(*node);
-
 	*no_add_attrs = true;
-	switch (code) {
+	switch (TREE_CODE(*node)) {
 	case FUNCTION_DECL:
 	case FUNCTION_TYPE:
 	case METHOD_TYPE:
@@ -261,12 +259,15 @@ static void search_const_strs(bool initexit)
 		gimple_stmt_iterator gsi;
 
 		for (gsi = gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi)) {
+			gcall *call_stmt;
 			gimple stmt = gsi_stmt(gsi);
 
 			if (!is_gimple_call(stmt))
 				continue;
-			if (has_nocapture_attr(as_a_gcall(stmt)))
-				search_str_param(as_a_gcall(stmt), initexit);
+
+			call_stmt = as_a_gcall(stmt);
+			if (has_nocapture_attr(call_stmt))
+				search_str_param(call_stmt, initexit);
 		}
 	}
 }
