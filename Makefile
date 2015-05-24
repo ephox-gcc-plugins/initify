@@ -26,7 +26,7 @@ all: $(PROG)
 $(PROG): initify_plugin.c
 	$(PLUGINCC) $(PLUGIN_FLAGS) -o $@ $^
 
-run: $(PROG)
+run test: $(PROG)
 	$(CC) -fplugin=$(CURDIR)/$(PROG) test.c -o test -O2 -fdump-tree-all -fdump-ipa-all
 
 clean:
