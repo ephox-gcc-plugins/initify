@@ -137,9 +137,9 @@ static bool set_init_exit_section(tree decl, bool initexit)
 		return false;
 
 	if (initexit)
-		set_decl_section_name(decl, ".init.rodata");
+		set_decl_section_name(decl, ".init.rodata.str");
 	else
-		set_decl_section_name(decl, ".exit.rodata");
+		set_decl_section_name(decl, ".exit.rodata.str");
 	return true;
 }
 
@@ -343,6 +343,27 @@ static struct opt_pass *make_initify_plugin_pass(void)
 }
 #endif
 
+static unsigned int (*old_section_type_flags)(tree decl, const char *name, int reloc);
+
+static unsigned int initify_section_type_flags(tree decl, const char *name, int reloc)
+{
+	if (!strcmp(name, ".init.rodata.str") || !strcmp(name, ".exit.rodata.str")) {
+		gcc_assert(TREE_CODE(decl) == VAR_DECL);
+		gcc_assert(DECL_INITIAL(decl));
+		gcc_assert(TREE_CODE(DECL_INITIAL(decl)) == STRING_CST);
+
+		return 1 | SECTION_MERGE | SECTION_STRINGS;
+	}
+
+	return old_section_type_flags(decl, name, reloc);
+}
+
+static void initify_start_unit(void *gcc_data, void *user_data)
+{
+	old_section_type_flags = targetm.section_type_flags;
+	targetm.section_type_flags = initify_section_type_flags;
+}
+
 int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version *version)
 {
 	const char * const plugin_name = plugin_info->base_name;
@@ -361,6 +382,7 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 	register_callback(plugin_name, PLUGIN_INFO, NULL, &initify_plugin_info);
 	register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &initify_plugin_pass_info);
 	register_callback(plugin_name, PLUGIN_ATTRIBUTES, register_attributes, NULL);
+	register_callback(plugin_name, PLUGIN_START_UNIT, initify_start_unit, NULL);
 
 	return 0;
 }
