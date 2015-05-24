@@ -198,6 +198,27 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 	return TREE_OPERAND(decl, 0);
 }
 
+static bool is_vararg(const_tree fn)
+{
+	const_tree fn_type, last, type;
+	tree arg_list;
+
+	fn_type = TREE_TYPE(fn);
+	gcc_assert(fn_type != NULL_TREE);
+	arg_list = TYPE_ARG_TYPES(fn_type);
+	if (arg_list == NULL_TREE)
+		return false;
+
+	last = TREE_VALUE(tree_last(arg_list));
+	if (TREE_CODE_CLASS(TREE_CODE(last)) == tcc_type)
+		type = last;
+	else
+		type = TREE_TYPE(last);
+
+	gcc_assert(type != NULL_TREE);
+	return type != void_type_node;
+}
+
 static bool is_in_nocapture_attr_value(const_gimple stmt, unsigned int num)
 {
 	unsigned int attr_arg_val = 0;
@@ -217,7 +238,7 @@ static bool is_in_nocapture_attr_value(const_gimple stmt, unsigned int num)
 	gcc_assert(attr_arg_val != 0);
 
 	// vararg
-	return attr_arg_val < num + 1;
+	return attr_arg_val < num + 1 && is_vararg(fndecl);
 }
 
 static void search_str_param(gcall *stmt, bool initexit)

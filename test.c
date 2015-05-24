@@ -7,6 +7,8 @@ test.c:46:14: note: initified function arg: print_init: [YES %s %s %s]
 test.c:46:14: note: initified function arg: print_init: [YES_FFF]
 test.c:46:14: note: initified function arg: print_init: [YES_GGG]
 test.c:46:14: note: initified function arg: print_init: [YES_HHH]
+
+objdump -s -j .init.rodata.str test
  */
 
 #include <stdio.h>
@@ -25,16 +27,17 @@ int __attribute__((noinline)) __attribute__((nocapture(2))) print_vararg(const c
 	va_list args;
 
 	va_start(args, str);
-	while (*str != '\0')
-		printf("%s\n", (const char *)va_arg(args, int));
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
 	va_end(args);
 
 	return printf(d);
 }
 
-int __attribute__((noinline)) __printf(1, 3) print_simple(const char *format, const char *d, const char *str)
+int __attribute__((noinline)) __printf(1, 3) print_simple(const char *format, const char *d, const char *str, const char *str2)
 {
-	return printf(format, str);
+	return printf(format, str, str2);
 }
 
 void __init print_init(const char *str)
@@ -45,7 +48,7 @@ void __init print_init(const char *str)
 	printf("NO %s %s\n", static_str, str);
 
 	printf("YES %s\n", __func__);
-	print_simple("YES %s", "NO_asd", "YES_nyuszimuszi\n");
+	print_simple("YES %s", "NO_asd", "YES_nyuszimuszi\n", "NO_rrrrr");
 	printf("NO cica\n");
 	print_vararg("NO_aaa", "YES %s %s %s", "YES_FFF", "YES_GGG", "YES_HHH");
 }
