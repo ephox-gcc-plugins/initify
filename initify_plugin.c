@@ -18,7 +18,7 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	= "20150524",
+	.version	= "20150524a",
 	.help		= "initify_plugin\n",
 };
 
@@ -208,23 +208,13 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 
 static bool is_vararg(const_tree fn)
 {
-	const_tree fn_type, last, type;
 	tree arg_list;
 
-	fn_type = TREE_TYPE(fn);
-	gcc_assert(fn_type != NULL_TREE);
-	arg_list = TYPE_ARG_TYPES(fn_type);
+	arg_list = TYPE_ARG_TYPES(TREE_TYPE(fn));
 	if (arg_list == NULL_TREE)
 		return false;
 
-	last = TREE_VALUE(tree_last(arg_list));
-	if (TREE_CODE_CLASS(TREE_CODE(last)) == tcc_type)
-		type = last;
-	else
-		type = TREE_TYPE(last);
-
-	gcc_assert(type != NULL_TREE);
-	return type != void_type_node;
+	return tree_last(arg_list) != void_list_node;
 }
 
 // __printf(1, 0), 0: turn off the varargs checking
