@@ -229,7 +229,7 @@ static bool check_varargs(const_tree attr)
 	return true;
 }
 
-static bool is_in_nocapture_attr_value(const_gimple stmt, unsigned int num)
+static bool is_nocapture_param(const_gimple stmt, unsigned int num)
 {
 	unsigned int attr_arg_val = 0;
 	tree attr_val;
@@ -264,7 +264,7 @@ static void search_str_param(gcall *stmt, bool initexit)
 		if (str == NULL_TREE)
 			continue;
 
-		if (!is_in_nocapture_attr_value(stmt, num))
+		if (!is_nocapture_param(stmt, num))
 			continue;
 
 		var = create_tmp_assign(stmt, num);
@@ -273,7 +273,7 @@ static void search_str_param(gcall *stmt, bool initexit)
 	}
 }
 
-static bool has_nocapture_attr(const gcall *stmt)
+static bool has_nocapture_param(const gcall *stmt)
 {
 	const_tree attr, fndecl = gimple_call_fndecl(stmt);
 
@@ -299,7 +299,7 @@ static void search_const_strs(bool initexit)
 				continue;
 
 			call_stmt = as_a_gcall(stmt);
-			if (has_nocapture_attr(call_stmt))
+			if (has_nocapture_param(call_stmt))
 				search_str_param(call_stmt, initexit);
 		}
 	}
