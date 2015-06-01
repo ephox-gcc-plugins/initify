@@ -206,6 +206,20 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 	return TREE_OPERAND(decl, 0);
 }
 
+static bool is_syscall(const_tree fn)
+{
+	if (!strncmp(DECL_NAME_POINTER(fn), "sys_", 4))
+		return true;
+
+	if (!strncmp(DECL_NAME_POINTER(fn), "sys32_", 6))
+		return true;
+
+	if (!strncmp(DECL_NAME_POINTER(fn), "compat_sys_", 11))
+		return true;
+
+	return false;
+}
+
 static bool is_vararg(const_tree fn)
 {
 	tree arg_list;
@@ -237,6 +251,9 @@ static bool is_nocapture_param(const_gimple stmt, unsigned int num)
 	const_tree fndecl = gimple_call_fndecl(stmt);
 
 	gcc_assert(DECL_ABSTRACT_ORIGIN(fndecl) == NULL_TREE);
+
+	if (is_syscall(fndecl))
+		return true;
 
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
@@ -279,6 +296,9 @@ static bool has_nocapture_param(const gcall *stmt)
 
 	if (fndecl == NULL_TREE)
 		return false;
+
+	if (is_syscall(fndecl))
+		return true;
 
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 	return attr != NULL_TREE;
