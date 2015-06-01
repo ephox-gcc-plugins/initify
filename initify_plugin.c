@@ -178,6 +178,7 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 	decl = build_decl(DECL_SOURCE_LOCATION(current_function_decl), VAR_DECL, create_tmp_var_name("cicus"), TREE_TYPE(str));
 
 	type = TREE_TYPE(TREE_TYPE(decl));
+	type = build_qualified_type(type, TYPE_QUALS(type) | TYPE_QUAL_CONST);
 	TYPE_READONLY(type) = 1;
 	TREE_PUBLIC(type) = 0;
 
