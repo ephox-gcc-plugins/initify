@@ -200,7 +200,7 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 	DECL_CHAIN(decl) = BLOCK_VARS(DECL_INITIAL(current_function_decl));
 	BLOCK_VARS(DECL_INITIAL (current_function_decl)) = decl;
 
-	decl = build_unary_op(DECL_SOURCE_LOCATION(current_function_decl), ADDR_EXPR, decl, 0);
+	decl = build_fold_addr_expr_loc(DECL_SOURCE_LOCATION(current_function_decl), decl);
 	gimple_call_set_arg(stmt, num, decl);
 	update_stmt(stmt);
 
