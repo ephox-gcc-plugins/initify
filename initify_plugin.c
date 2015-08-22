@@ -18,7 +18,7 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	= "20150601",
+	.version	= "20150822",
 	.help		= "initify_plugin\n",
 };
 
@@ -157,7 +157,7 @@ static void search_local_strs(bool initexit)
 	FOR_EACH_LOCAL_DECL(cfun, i, var) {
 		tree str, init_val = DECL_INITIAL(var);
 
-		if (init_val == NULL_TREE)
+		if (init_val == NULL_TREE || init_val == error_mark_node)
 			continue;
 		if (strcmp(DECL_NAME_POINTER(var), "__func__"))
 			continue;
