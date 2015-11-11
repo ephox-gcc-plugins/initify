@@ -230,33 +230,10 @@ static bool is_syscall(const_tree fn)
 	return false;
 }
 
-static bool is_vararg(const_tree fn)
-{
-	tree arg_list;
-
-	arg_list = TYPE_ARG_TYPES(TREE_TYPE(fn));
-	if (arg_list == NULL_TREE)
-		return false;
-
-	return tree_last(arg_list) != void_list_node;
-}
-
-// __printf(1, 0), 0: turn off the varargs checking
-static bool check_varargs(const_tree attr)
-{
-	const_tree attr_val;
-
-	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
-		if (TREE_VALUE(attr_val) == integer_zero_node)
-			return false;
-	}
-	return true;
-}
-
 static bool is_nocapture_param(const_gimple stmt, unsigned int fn_arg_count)
 {
 	const_tree attr, attr_val;
-	unsigned int attr_arg_val = 0;
+	unsigned int fntype_arg_len, attr_arg_val = 0;
 	const_tree fndecl = gimple_call_fndecl(stmt);
 
 	gcc_assert(DECL_ABSTRACT_ORIGIN(fndecl) == NULL_TREE);
@@ -264,19 +241,18 @@ static bool is_nocapture_param(const_gimple stmt, unsigned int fn_arg_count)
 	if (is_syscall(fndecl))
 		return true;
 
+	fntype_arg_len = type_num_arguments(TREE_TYPE(fndecl));
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
 		attr_arg_val = (unsigned int)tree_to_uhwi(TREE_VALUE(attr_val));
 
 		if (attr_arg_val == fn_arg_count)
 			return true;
+		if (attr_arg_val > fntype_arg_len && fn_arg_count >= attr_arg_val)
+			return true;
 	}
 
-	if (!is_vararg(fndecl))
-		return false;
-	if (!check_varargs(attr))
-		return false;
-	return attr_arg_val < fn_arg_count;
+	return false;
 }
 
 static void search_str_param(gcall *stmt, bool initexit)
