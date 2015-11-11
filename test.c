@@ -34,7 +34,7 @@ objdump -s -j .init.rodata.str test
 
 #define __printf(a, b) __attribute__((nocapture(a, b)))
 
-int __attribute__((noinline)) __printf(3, 0) __attribute__((nocapture(2))) print_vararg_no_vararg(const char *d, const char *a, const char *str, ...)
+int __printf(3, 0) __attribute__((nocapture(2))) print_vararg_no_vararg(const char *d, const char *a, const char *str, ...)
 {
 	va_list args;
 
@@ -45,20 +45,7 @@ int __attribute__((noinline)) __printf(3, 0) __attribute__((nocapture(2))) print
 	return printf(d);
 }
 
-int __attribute__((noinline)) __attribute__((nocapture(1, 3))) print_format_and_vararg(const char *d, const char *str, ...)
-{
-	va_list args;
-
-	va_start(args, str);
-	printf("%s\n", va_arg(args, const char *));
-	printf("%s\n", va_arg(args, const char *));
-	printf("%s\n", va_arg(args, const char *));
-	va_end(args);
-
-	return printf(d);
-}
-
-int __attribute__((noinline)) __attribute__((nocapture(3))) print_vararg(const char *d, const char *str, ...)
+int __attribute__((nocapture(1, 3))) print_format_and_vararg(const char *d, const char *str, ...)
 {
 	va_list args;
 
@@ -71,7 +58,7 @@ int __attribute__((noinline)) __attribute__((nocapture(3))) print_vararg(const c
 	return printf(d);
 }
 
-int __attribute__((noinline)) __printf(1, 3) __attribute__((nocapture(2))) print_vararg_2(const char *d, const char *str, ...)
+int __attribute__((nocapture(3))) print_vararg(const char *d, const char *str, ...)
 {
 	va_list args;
 
@@ -84,7 +71,7 @@ int __attribute__((noinline)) __printf(1, 3) __attribute__((nocapture(2))) print
 	return printf(d);
 }
 
-int __attribute__((noinline)) __attribute__((nocapture(1))) print_vararg_3(const char *d, const char *str, ...)
+int __printf(1, 3) __attribute__((nocapture(2))) print_vararg_2(const char *d, const char *str, ...)
 {
 	va_list args;
 
@@ -97,7 +84,20 @@ int __attribute__((noinline)) __attribute__((nocapture(1))) print_vararg_3(const
 	return printf(d);
 }
 
-int __attribute__((noinline)) __printf(1, 3) print_simple(const char *format, const char *d, const char *str, const char *str2)
+int __attribute__((nocapture(1))) print_vararg_3(const char *d, const char *str, ...)
+{
+	va_list args;
+
+	va_start(args, str);
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	va_end(args);
+
+	return printf(d);
+}
+
+int __printf(1, 3) print_simple(const char *format, const char *d, const char *str, const char *str2)
 {
 	return printf(format, str, str2);
 }

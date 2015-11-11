@@ -27,7 +27,7 @@ $(PROG): initify_plugin.c
 	$(PLUGINCC) $(PLUGIN_FLAGS) -o $@ $^
 
 run test: $(PROG)
-	$(CC) -fplugin=$(CURDIR)/$(PROG) test.c -o test -O2 -fdump-tree-all -fdump-ipa-all
+	$(CC) -fplugin=$(CURDIR)/$(PROG) test.c -o test -O2 -fdump-tree-all -fdump-ipa-all -fno-inline
 
 clean:
 	$(RM) -f $(PROG) test test.c.* test.ltrans0.* test.wpa.* test_*.c.* test_*
