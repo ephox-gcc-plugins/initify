@@ -42,8 +42,8 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		// FALLTHROUGH
 	}
 	default:
-		error("%s: %qE attribute only applies to functions", __func__, name);
 		debug_tree(*node);
+		error("%s: %qE attribute only applies to functions", __func__, name);
 		return NULL_TREE;
 	}
 
@@ -51,8 +51,8 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		tree position = TREE_VALUE(arg);
 
 		if (TREE_CODE(position) != INTEGER_CST) {
-			error("%s: parameter isn't an integer", __func__);
 			debug_tree(arg);
+			error("%s: parameter isn't an integer", __func__);
 			return NULL_TREE;
 		}
 	}
@@ -235,7 +235,7 @@ static bool is_vararg(const_tree fn)
 // __printf(1, 0), 0: turn off the varargs checking
 static bool check_varargs(const_tree attr)
 {
-	tree attr_val;
+	const_tree attr_val;
 
 	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
 		if (TREE_VALUE(attr_val) == integer_zero_node)
@@ -244,11 +244,10 @@ static bool check_varargs(const_tree attr)
 	return true;
 }
 
-static bool is_nocapture_param(const_gimple stmt, unsigned int num)
+static bool is_nocapture_param(const_gimple stmt, unsigned int fn_arg_count)
 {
+	const_tree attr, attr_val;
 	unsigned int attr_arg_val = 0;
-	tree attr_val;
-	const_tree attr;
 	const_tree fndecl = gimple_call_fndecl(stmt);
 
 	gcc_assert(DECL_ABSTRACT_ORIGIN(fndecl) == NULL_TREE);
@@ -260,7 +259,7 @@ static bool is_nocapture_param(const_gimple stmt, unsigned int num)
 	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
 		attr_arg_val = (unsigned int)tree_to_uhwi(TREE_VALUE(attr_val));
 
-		if (attr_arg_val == num + 1)
+		if (attr_arg_val == fn_arg_count)
 			return true;
 	}
 
@@ -268,7 +267,7 @@ static bool is_nocapture_param(const_gimple stmt, unsigned int num)
 		return false;
 	if (!check_varargs(attr))
 		return false;
-	return attr_arg_val < num + 1;
+	return attr_arg_val < fn_arg_count;
 }
 
 static void search_str_param(gcall *stmt, bool initexit)
@@ -282,7 +281,7 @@ static void search_str_param(gcall *stmt, bool initexit)
 		if (str == NULL_TREE)
 			continue;
 
-		if (!is_nocapture_param(stmt, num))
+		if (!is_nocapture_param(stmt, num + 1))
 			continue;
 
 		var = create_tmp_assign(stmt, num);
