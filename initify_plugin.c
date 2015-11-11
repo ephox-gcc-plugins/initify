@@ -22,6 +22,11 @@ static struct plugin_info initify_plugin_info = {
 	.help		= "initify_plugin\n",
 };
 
+/* nocapture attribute:
+ *  * to mark nocapture function arguments. If used on a vararg argument it applies to all of them
+ *    that have no other uses.
+ *  * attribute value 0 is ignored to allow reusing print attribute arguments
+ */
 static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args, int __unused flags, bool *no_add_attrs)
 {
 	tree orig_attr, arg;
@@ -51,8 +56,12 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		tree position = TREE_VALUE(arg);
 
 		if (TREE_CODE(position) != INTEGER_CST) {
-			debug_tree(arg);
-			error("%s: parameter isn't an integer", __func__);
+			error("%qE parameter of the %qE attribute isn't an integer (fn: %qE)", position, name, *node);
+			return NULL_TREE;
+		}
+
+		if (tree_int_cst_lt(position, integer_zero_node)) {
+			error("%qE parameter of the %qE attribute less than 0 (fn: %qE)", position, name, *node);
 			return NULL_TREE;
 		}
 	}
