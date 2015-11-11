@@ -1,18 +1,27 @@
 /* result:
 
-test.c:62:21: note: initified local var: print_init: print_init
-test.c:63:14: note: initified function arg: print_init: [YES %s]
-test.c:63:14: note: initified function arg: print_init: [YES_nyuszimuszi
-]
-test.c:65:14: note: initified function arg: print_init: [YES %s %s %s]
-test.c:65:14: note: initified function arg: print_init: [YES_FFF]
-test.c:65:14: note: initified function arg: print_init: [YES_GGG]
-test.c:65:14: note: initified function arg: print_init: [YES_HHH]
-test.c:66:24: note: initified function arg: print_init: [YES rrrrr]
-test.c:66:24: note: initified function arg: print_init: [YES %s DDDD]
+initified local var: _1_YES_print_init: _1_YES_print_init
+initified function arg: _1_YES_print_init: [2. YES %s]
+initified function arg: _1_YES_print_init: [3. YES
+initified function arg: _1_YES_print_init: [4. YES %s %s %s]
+initified function arg: _1_YES_print_init: [5. YES]
+initified function arg: _1_YES_print_init: [6. YES]
+initified function arg: _1_YES_print_init: [7. YES]
+initified function arg: _1_YES_print_init: [8. YES]
+initified function arg: _1_YES_print_init: [9. YES %s]
+initified function arg: _1_YES_print_init: [10. YES]
+initified function arg: _1_YES_print_init: [11. YES %s %d]
+initified function arg: _1_YES_print_init: [12. YES]
+initified function arg: _1_YES_print_init: [13. YES]
+initified function arg: _1_YES_print_init: [14. YES]
+initified function arg: _1_YES_print_init: [15. YES %s %s %s]
+initified function arg: _1_YES_print_init: [16. YES]
+initified function arg: _1_YES_print_init: [17. YES]
+initified function arg: _1_YES_print_init: [18. YES]
+initified function arg: _1_YES_print_init: [19. YES]
 
 objdump -s -j .init.rodata.str test
- */
+*/
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -36,7 +45,46 @@ int __attribute__((noinline)) __printf(3, 0) __attribute__((nocapture(2))) print
 	return printf(d);
 }
 
-int __attribute__((noinline)) __attribute__((nocapture(2))) print_vararg(const char *d, const char *str, ...)
+int __attribute__((noinline)) __attribute__((nocapture(1, 3))) print_format_and_vararg(const char *d, const char *str, ...)
+{
+	va_list args;
+
+	va_start(args, str);
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	va_end(args);
+
+	return printf(d);
+}
+
+int __attribute__((noinline)) __attribute__((nocapture(3))) print_vararg(const char *d, const char *str, ...)
+{
+	va_list args;
+
+	va_start(args, str);
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	va_end(args);
+
+	return printf(d);
+}
+
+int __attribute__((noinline)) __printf(1, 3) __attribute__((nocapture(2))) print_vararg_2(const char *d, const char *str, ...)
+{
+	va_list args;
+
+	va_start(args, str);
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	va_end(args);
+
+	return printf(d);
+}
+
+int __attribute__((noinline)) __attribute__((nocapture(1))) print_vararg_3(const char *d, const char *str, ...)
 {
 	va_list args;
 
@@ -54,24 +102,27 @@ int __attribute__((noinline)) __printf(1, 3) print_simple(const char *format, co
 	return printf(format, str, str2);
 }
 
-void __init print_init(const char *str)
+void __init _1_YES_print_init(const char *str)
 {
 	unsigned int i;
 	static const char static_str[] = "NO_cicamica";
 
-	printf("NO %s %s\n", static_str, str);
+	printf("1. NO %s %s\n", static_str, str);
 
-	printf("YES %s\n", __func__);
-	print_simple("YES %s", "NO_asd", "YES_nyuszimuszi\n", "NO_rrrrr");
-	printf("NO cica\n");
-	print_vararg("NO_aaa", "YES %s %s %s", "YES_FFF", "YES_GGG", "YES_HHH");
-	print_vararg_no_vararg("NO_ttt", "YES rrrrr", "YES %s DDDD", "NO_zzzz");
+	printf("%s\n", __func__);
+	print_simple("2. YES %s", "2. NO", "3. YES\n", "3. NO");
+	printf("4. NO\n");
+	print_vararg("5. NO", "6. NO", "4. YES %s %s %s", "5. YES", "6. YES", "7. YES");
+	print_vararg_no_vararg("7. NO", "8. YES", "9. YES %s", "8. NO");
+	print_format_and_vararg("10. YES", "9. NO", "11. YES %s %d", "12. YES");
+	print_vararg_2("13. YES", "14. YES", "15. YES %s %s %s", "16. YES", "17. YES", "18. YES");
+	print_vararg_3("19. YES", "10. NO", "11. NO %s %s %s");
 }
 
 int main(void)
 {
-	static const char str[] = "NO_sdcvxcv";
+	static const char str[] = "10. NO";
 
-	print_init(str);
+	_1_YES_print_init(str);
 	return 0;
 }
