@@ -60,7 +60,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 			return NULL_TREE;
 		}
 
-		if (tree_int_cst_lt(position, integer_zero_node)) {
+		if (tree_int_cst_lt(position, integer_minus_one_node)) {
 			error("%qE parameter of the %qE attribute less than 0 (fn: %qE)", position, name, *node);
 			return NULL_TREE;
 		}
@@ -172,10 +172,10 @@ static bool is_syscall(const_tree fn)
 	return false;
 }
 
-static bool is_nocapture_param(const gcall *stmt, unsigned int fn_arg_count)
+static bool is_nocapture_param(const gcall *stmt, int fn_arg_count)
 {
 	const_tree attr, attr_val;
-	unsigned int fntype_arg_len, attr_arg_val = 0;
+	int fntype_arg_len;
 	const_tree fndecl = gimple_call_fndecl(stmt);
 
 	gcc_assert(DECL_ABSTRACT_ORIGIN(fndecl) == NULL_TREE);
@@ -189,8 +189,10 @@ static bool is_nocapture_param(const gcall *stmt, unsigned int fn_arg_count)
 		return false;
 
 	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
-		attr_arg_val = (unsigned int)tree_to_uhwi(TREE_VALUE(attr_val));
+		int attr_arg_val = (int)tree_to_shwi(TREE_VALUE(attr_val));
 
+		if (attr_arg_val == -1)
+			return true;
 		if (attr_arg_val == fn_arg_count)
 			return true;
 		if (attr_arg_val > fntype_arg_len && fn_arg_count >= attr_arg_val)
@@ -286,7 +288,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		// return, fndecl
 		gcc_assert(i >= 3);
 		arg_count = i - 2;
-		if (is_nocapture_param(as_a_const_gcall(stmt), arg_count))
+		if (is_nocapture_param(as_a_const_gcall(stmt), (int)arg_count))
 			continue;
 
 		fndecl = gimple_call_fndecl(stmt);

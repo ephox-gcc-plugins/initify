@@ -21,6 +21,8 @@ initified function arg: _1_YES_print_init: [18. YES]
 initified function arg: _1_YES_print_init: [19. YES]
 initified local var: _20_YES_func: _20_YES_func
 initified local var: _21_YES_func: _21_YES_func
+initified function arg: _1_YES_print_init: ["22. YES"]
+initified function arg: _1_YES_print_init: ["23. YES"]
 
 objdump -s -j .init.rodata.str test
 */
@@ -109,6 +111,11 @@ int __attribute__((nocapture(1))) print_simple_2(const char *format)
 	return printf(format, format, format);
 }
 
+int __attribute__((nocapture(-1))) print_simple_3(const char *format, const char *d)
+{
+	return printf(format, d);
+}
+
 void __init _1_YES_print_init(const char *str)
 {
 	unsigned int i;
@@ -124,6 +131,7 @@ void __init _1_YES_print_init(const char *str)
 	print_format_and_vararg("10. YES", "9. NO", "11. YES %s %d", "12. YES");
 	print_vararg_2("13. YES", "14. YES", "15. YES %s %s %s", "16. YES", "17. YES", "18. YES");
 	print_vararg_3("19. YES", "10. NO", "11. NO %s %s %s");
+	print_simple_3("22. YES", "23. YES");
 }
 
 void __init _20_YES_func(void)
