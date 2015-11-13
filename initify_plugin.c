@@ -293,7 +293,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 
 		fndecl = gimple_call_fndecl(stmt);
 		gcc_assert(fndecl != NULL_TREE);
-		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
+//		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
 		return true;
 
 	}
@@ -336,8 +336,9 @@ static void search_local_strs(bool initexit)
 		str = get_string_cst(init_val);
 		gcc_assert(str);
 
-		if (set_init_exit_section(var, initexit))
-			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
+		if (set_init_exit_section(var, initexit)) {
+//			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
+		}
 	}
 }
 
