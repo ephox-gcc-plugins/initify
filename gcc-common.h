@@ -1,8 +1,12 @@
 #ifndef GCC_COMMON_H_INCLUDED
 #define GCC_COMMON_H_INCLUDED
 
-#include "plugin.h"
 #include "bversion.h"
+#if BUILDING_GCC_VERSION >= 6000
+#include "gcc-plugin.h"
+#else
+#include "plugin.h"
+#endif
 #include "plugin-version.h"
 #include "config.h"
 #include "system.h"
@@ -76,6 +80,8 @@
 #include "tree-flow.h"
 #else
 #include "tree-cfgcleanup.h"
+#include "tree-ssa-operands.h"
+#include "tree-into-ssa.h"
 #endif
 
 #if BUILDING_GCC_VERSION >= 4008
@@ -158,7 +164,7 @@ static inline void debug_tree(const_tree t)
 #define C_TYPE_FIELDS_READONLY(TYPE) TREE_LANG_FLAG_1(TYPE)
 
 #if BUILDING_GCC_VERSION == 4005
-#define FOR_EACH_LOCAL_DECL(FUN, I, D) for (tree vars = (FUN)->local_decls; vars && (D = TREE_VALUE(vars)); vars = TREE_CHAIN(vars), I)
+#define FOR_EACH_LOCAL_DECL(FUN, I, D) for (tree vars = (FUN)->local_decls, (I) = 0; vars && ((D) = TREE_VALUE(vars)); vars = TREE_CHAIN(vars), (I)++)
 #define DECL_CHAIN(NODE) (TREE_CHAIN(DECL_MINIMAL_CHECK(NODE)))
 #define FOR_EACH_VEC_ELT(T, V, I, P) for (I = 0; VEC_iterate(T, (V), (I), (P)); ++(I))
 #define TODO_rebuild_cgraph_edges 0
@@ -167,6 +173,8 @@ static inline void debug_tree(const_tree t)
 #ifndef O_BINARY
 #define O_BINARY 0
 #endif
+
+typedef struct varpool_node *varpool_node_ptr;
 
 static inline bool gimple_call_builtin_p(gimple stmt, enum built_in_function code)
 {
@@ -356,6 +364,7 @@ static inline struct cgraph_node *cgraph_alias_target(struct cgraph_node *n)
 #define profile_status_for_fn(FN)	((FN)->cfg->x_profile_status)
 #define BASIC_BLOCK_FOR_FN(FN, N)	BASIC_BLOCK_FOR_FUNCTION((FN), (N))
 #define NODE_IMPLICIT_ALIAS(node)	(node)->same_body_alias
+#define VAR_P(NODE)			(TREE_CODE(NODE) == VAR_DECL)
 
 static inline bool tree_fits_shwi_p(const_tree t)
 {
@@ -398,6 +407,7 @@ static inline const char *get_tree_code_name(enum tree_code code)
 }
 
 #define ipa_remove_stmt_references(cnode, stmt)
+
 typedef union gimple_statement_d gasm;
 typedef union gimple_statement_d gassign;
 typedef union gimple_statement_d gcall;
@@ -405,45 +415,6 @@ typedef union gimple_statement_d gcond;
 typedef union gimple_statement_d gdebug;
 typedef union gimple_statement_d gphi;
 typedef union gimple_statement_d greturn;
-#endif
-
-#if BUILDING_GCC_VERSION == 4008
-#define NODE_SYMBOL(node) (&(node)->symbol)
-#define NODE_DECL(node) (node)->symbol.decl
-#endif
-
-#if BUILDING_GCC_VERSION >= 4008
-#define add_referenced_var(var)
-#define mark_sym_for_renaming(var)
-#define varpool_mark_needed_node(node)
-#define create_var_ann(var)
-#define TODO_dump_func 0
-#define TODO_dump_cgraph 0
-
-#endif
-
-#if BUILDING_GCC_VERSION <= 4009
-#define TODO_verify_il 0
-#define AVAIL_INTERPOSABLE AVAIL_OVERWRITABLE
-#endif
-
-#if BUILDING_GCC_VERSION == 4009
-typedef struct gimple_statement_base gasm;
-typedef struct gimple_statement_base gassign;
-typedef struct gimple_statement_base gcall;
-typedef struct gimple_statement_base gcond;
-typedef struct gimple_statement_base gdebug;
-typedef struct gimple_statement_base gphi;
-typedef struct gimple_statement_base greturn;
-#endif
-
-#if BUILDING_GCC_VERSION <= 4009
-typedef struct rtx_def rtx_insn;
-
-static inline void set_decl_section_name(tree node, const char *value)
-{
-	DECL_SECTION_NAME(node) = build_string(strlen(value) + 1, value);
-}
 
 static inline gasm *as_a_gasm(gimple stmt)
 {
@@ -475,6 +446,26 @@ static inline const gcall *as_a_const_gcall(const_gimple stmt)
 	return stmt;
 }
 
+static inline gcond *as_a_gcond(gimple stmt)
+{
+	return stmt;
+}
+
+static inline const gcond *as_a_const_gcond(const_gimple stmt)
+{
+	return stmt;
+}
+
+static inline gdebug *as_a_gdebug(gimple stmt)
+{
+	return stmt;
+}
+
+static inline const gdebug *as_a_const_gdebug(const_gimple stmt)
+{
+	return stmt;
+}
+
 static inline gphi *as_a_gphi(gimple stmt)
 {
 	return stmt;
@@ -496,12 +487,131 @@ static inline const greturn *as_a_const_greturn(const_gimple stmt)
 }
 #endif
 
+#if BUILDING_GCC_VERSION == 4008
+#define NODE_SYMBOL(node) (&(node)->symbol)
+#define NODE_DECL(node) (node)->symbol.decl
+#endif
+
+#if BUILDING_GCC_VERSION >= 4008
+#define add_referenced_var(var)
+#define mark_sym_for_renaming(var)
+#define varpool_mark_needed_node(node)
+#define create_var_ann(var)
+#define TODO_dump_func 0
+#define TODO_dump_cgraph 0
+#endif
+
+#if BUILDING_GCC_VERSION <= 4009
+#define TODO_verify_il 0
+#define AVAIL_INTERPOSABLE AVAIL_OVERWRITABLE
+
+#define section_name_prefix LTO_SECTION_NAME_PREFIX
+#define fatal_error(loc, gmsgid, ...) fatal_error((gmsgid), __VA_ARGS__)
+
+typedef struct rtx_def rtx_insn;
+
+static inline void set_decl_section_name(tree node, const char *value)
+{
+	DECL_SECTION_NAME(node) = build_string(strlen(value) + 1, value);
+}
+#endif
+
+#if BUILDING_GCC_VERSION == 4009
+typedef struct gimple_statement_asm gasm;
+typedef struct gimple_statement_base gassign;
+typedef struct gimple_statement_call gcall;
+typedef struct gimple_statement_base gcond;
+typedef struct gimple_statement_base gdebug;
+typedef struct gimple_statement_phi gphi;
+typedef struct gimple_statement_base greturn;
+
+static inline gasm *as_a_gasm(gimple stmt)
+{
+	return as_a<gasm>(stmt);
+}
+
+static inline const gasm *as_a_const_gasm(const_gimple stmt)
+{
+	return as_a<const gasm>(stmt);
+}
+
+static inline gassign *as_a_gassign(gimple stmt)
+{
+	return stmt;
+}
+
+static inline const gassign *as_a_const_gassign(const_gimple stmt)
+{
+	return stmt;
+}
+
+static inline gcall *as_a_gcall(gimple stmt)
+{
+	return as_a<gcall>(stmt);
+}
+
+static inline const gcall *as_a_const_gcall(const_gimple stmt)
+{
+	return as_a<const gcall>(stmt);
+}
+
+static inline gcond *as_a_gcond(gimple stmt)
+{
+	return stmt;
+}
+
+static inline const gcond *as_a_const_gcond(const_gimple stmt)
+{
+	return stmt;
+}
+
+static inline gdebug *as_a_gdebug(gimple stmt)
+{
+	return stmt;
+}
+
+static inline const gdebug *as_a_const_gdebug(const_gimple stmt)
+{
+	return stmt;
+}
+
+static inline gphi *as_a_gphi(gimple stmt)
+{
+	return as_a<gphi>(stmt);
+}
+
+static inline const gphi *as_a_const_gphi(const_gimple stmt)
+{
+	return as_a<const gphi>(stmt);
+}
+
+static inline greturn *as_a_greturn(gimple stmt)
+{
+	return stmt;
+}
+
+static inline const greturn *as_a_const_greturn(const_gimple stmt)
+{
+	return stmt;
+}
+#endif
+
 #if BUILDING_GCC_VERSION >= 4009
 #define TODO_ggc_collect 0
 #define NODE_SYMBOL(node) (node)
 #define NODE_DECL(node) (node)->decl
 #define cgraph_node_name(node) (node)->name()
 #define NODE_IMPLICIT_ALIAS(node) (node)->cpp_implicit_alias
+#endif
+
+#if BUILDING_GCC_VERSION >= 5000 && BUILDING_GCC_VERSION < 6000
+// gimple related
+template <>
+template <>
+inline bool is_a_helper<const gassign *>::test(const_gimple gs)
+{
+	return gs->code == GIMPLE_ASSIGN;
+}
 #endif
 
 #if BUILDING_GCC_VERSION >= 5000
@@ -544,6 +654,11 @@ static inline void varpool_finalize_decl(tree decl)
 static inline void varpool_add_new_variable(tree decl)
 {
 	varpool_node::add(decl);
+}
+
+static inline unsigned int rebuild_cgraph_edges(void)
+{
+	return cgraph_edge::rebuild_edges();
 }
 
 static inline cgraph_node_ptr cgraph_function_node(cgraph_node_ptr node, enum availability *availability)
@@ -601,17 +716,16 @@ static inline void cgraph_remove_node_duplication_hook(struct cgraph_2node_hook_
 	symtab->remove_cgraph_duplication_hook(entry);
 }
 
+#if BUILDING_GCC_VERSION >= 6000
+typedef gimple *gimple_ptr;
+typedef const gimple *const_gimple;
+#define gimple gimple_ptr
+#endif
+
 // gimple related
 static inline gimple gimple_build_assign_with_ops(enum tree_code subcode, tree lhs, tree op1, tree op2 MEM_STAT_DECL)
 {
 	return gimple_build_assign(lhs, subcode, op1, op2 PASS_MEM_STAT);
-}
-
-template <>
-template <>
-inline bool is_a_helper<const gassign *>::test(const_gimple gs)
-{
-	return gs->code == GIMPLE_ASSIGN;
 }
 
 template <>
@@ -684,6 +798,15 @@ static inline void ipa_remove_stmt_references(symtab_node *referring_node, gimpl
 {
 	referring_node->remove_stmt_references(stmt);
 }
+#endif
+
+#if BUILDING_GCC_VERSION < 6000
+#define get_inner_reference(exp, pbitsize, pbitpos, poffset, pmode, punsignedp, preversep, pvolatilep, keep_aligning) get_inner_reference(exp, pbitsize, pbitpos, poffset, pmode, punsignedp, pvolatilep, keep_aligning)
+#define gen_rtx_set(ARG0, ARG1) gen_rtx_SET(VOIDmode, (ARG0), (ARG1))
+#endif
+
+#if BUILDING_GCC_VERSION >= 6000
+#define gen_rtx_set(ARG0, ARG1) gen_rtx_SET((ARG0), (ARG1))
 #endif
 
 #endif
