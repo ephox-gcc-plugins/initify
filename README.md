@@ -9,7 +9,7 @@ The kernel patches required by the plugin are maintained in PaX (http://www.grse
 Compiling & Usage
 -----------------
 
-##### gcc 4.5 - 5:
+##### gcc 4.5 - 6:
 
 ```shell
 $ make clean; make
