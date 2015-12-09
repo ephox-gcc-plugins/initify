@@ -94,8 +94,6 @@ int __attribute__((nocapture(1))) print_vararg_3(const char *d, const char *str,
 
 	va_start(args, str);
 	printf("%s\n", va_arg(args, const char *));
-	printf("%s\n", va_arg(args, const char *));
-	printf("%s\n", va_arg(args, const char *));
 	va_end(args);
 
 	return printf(d);
