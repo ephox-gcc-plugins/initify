@@ -153,6 +153,18 @@ void __init _12_NO_func(void)
 	no_print(__func__);
 }
 
+struct dd { const char *func; };
+void dd_print(const struct dd *dd)
+{
+	printf("%s\n", dd->func);
+}
+
+void __init _13_NO_func(void)
+{
+	static const struct dd dd = { .func = __func__ };
+	dd_print(&dd);
+}
+
 int main(void)
 {
 	static const char str[] = "10. NO";

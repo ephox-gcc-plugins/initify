@@ -207,7 +207,7 @@ static bool compare_vardecls(const_tree vardecl, tree op)
 	tree decl, offset;
 	HOST_WIDE_INT bitsize, bitpos;
 	enum machine_mode mode;
-	int unsignedp, reversep, volatilep;
+	int unsignedp, reversep __unused, volatilep;
 	enum tree_code code = TREE_CODE(op);
 
 	if (TREE_CODE_CLASS(code) == tcc_exceptional && code != SSA_NAME)
@@ -300,9 +300,38 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 	return false;
 }
 
+static bool is_in_capture_init(const_tree vardecl)
+{
+	unsigned int i;
+	tree var;
+
+	FOR_EACH_LOCAL_DECL(cfun, i, var) {
+		unsigned HOST_WIDE_INT cnt;
+		tree index __unused, value;
+		const_tree initial = DECL_INITIAL(var);
+
+		if (initial == NULL_TREE)
+			continue;
+		if (TREE_CODE(initial) != CONSTRUCTOR)
+			continue;
+
+		FOR_EACH_CONSTRUCTOR_ELT(CONSTRUCTOR_ELTS(initial), cnt, index, value) {
+			if (TREE_CODE(value) != ADDR_EXPR)
+				continue;
+			if (TREE_OPERAND(value, 0) == vardecl)
+				return true;
+		}
+	}
+
+	return false;
+}
+
 static bool has_capture_use_local_var(const_tree vardecl)
 {
 	basic_block bb;
+
+	if (is_in_capture_init(vardecl))
+		return true;
 
 	FOR_EACH_BB_FN(bb, cfun) {
 		gimple_stmt_iterator gsi;
