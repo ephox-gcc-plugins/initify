@@ -302,7 +302,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 
 static bool is_in_capture_init(const_tree vardecl)
 {
-	unsigned int i;
+	unsigned int i __unused;
 	tree var;
 
 	FOR_EACH_LOCAL_DECL(cfun, i, var) {
@@ -347,7 +347,7 @@ static bool has_capture_use_local_var(const_tree vardecl)
 
 static void search_local_strs(bool initexit)
 {
-	unsigned int i;
+	unsigned int i __unused;
 	tree var;
 
 	FOR_EACH_LOCAL_DECL(cfun, i, var) {
