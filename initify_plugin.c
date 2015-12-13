@@ -233,6 +233,7 @@ static bool compare_vardecls(const_tree vardecl, tree op)
 #if BUILDING_GCC_VERSION >= 4006
 	case MEM_REF:
 #endif
+	case INDIRECT_REF:
 	case TARGET_MEM_REF:
 		decl = TREE_OPERAND(decl, 0);
 		break;
