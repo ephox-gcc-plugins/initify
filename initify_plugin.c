@@ -236,10 +236,14 @@ static bool compare_vardecls(const_tree vardecl, tree op)
 	case INDIRECT_REF:
 	case TARGET_MEM_REF:
 		decl = TREE_OPERAND(decl, 0);
+		if (decl == NULL_TREE)
+			return false;
 		break;
 	default:
 		break;
 	}
+
+	gcc_assert(decl != NULL_TREE);
 
 	if (TREE_CODE(decl) == ADDR_EXPR)
 		decl = TREE_OPERAND(decl, 0);
