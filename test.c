@@ -161,8 +161,29 @@ void dd_print(const struct dd *dd)
 
 void __init _13_NO_func(void)
 {
-	static const struct dd dd = { .func = __func__ };
-	dd_print(&dd);
+	static struct x {
+		struct {
+			const char *n;
+		} f;
+	} xx = {
+		.f = {
+			.n = __func__,
+		},
+	};
+
+	dd_print(&xx);
+}
+
+void __init _14_NO_func(void)
+{
+	static const struct dd ee = { .func = __func__  + 1};
+
+	dd_print(&ee);
+}
+
+void __init _15_NO_func(void)
+{
+	asm("" : : "r"(&__func__));
 }
 
 int main(void)
