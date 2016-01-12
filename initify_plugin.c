@@ -204,11 +204,18 @@ static bool is_nocapture_param(const gcall *stmt, int fn_arg_count)
 
 static bool is_same_vardecl(const_tree op, const_tree vardecl)
 {
+	const_tree decl;
+
 	if (op == vardecl)
 		return true;
-	if (!DECL_P(op))
+	if (TREE_CODE(op) == SSA_NAME)
+		decl = SSA_NAME_VAR(op);
+	else
+		decl = op;
+	if (decl == NULL_TREE || !DECL_P(decl))
 		return false;
-	return DECL_NAME(op) && !strcmp(DECL_NAME_POINTER(op), DECL_NAME_POINTER(vardecl));
+
+	return DECL_NAME(decl) && !strcmp(DECL_NAME_POINTER(decl), DECL_NAME_POINTER(vardecl));
 }
 
 static bool search_same_vardecl(const_tree value, const_tree vardecl)
