@@ -18,7 +18,7 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	= "20160113",
+	.version	= "20160130",
 	.help		= "initify_plugin\n",
 };
 
