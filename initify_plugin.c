@@ -225,9 +225,12 @@ static bool search_same_vardecl(const_tree value, const_tree vardecl)
 	for (i = 0; i < TREE_OPERAND_LENGTH(value); i++) {
 		const_tree op = TREE_OPERAND(value, i);
 
+		if (op == NULL_TREE)
+			continue;
 		if (is_same_vardecl(op, vardecl))
 			return true;
-		return search_same_vardecl(op, vardecl);
+		if (search_same_vardecl(op, vardecl))
+			return true;
 	}
 	return false;
 }
