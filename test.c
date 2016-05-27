@@ -1,28 +1,30 @@
 /* result:
 
 initified local var: _1_YES_print_init: _1_YES_print_init
-initified function arg: _1_YES_print_init: [2. YES %s]
-initified function arg: _1_YES_print_init: [3. YES
-initified function arg: _1_YES_print_init: [4. YES %s %s %s]
-initified function arg: _1_YES_print_init: [5. YES]
-initified function arg: _1_YES_print_init: [6. YES]
-initified function arg: _1_YES_print_init: [7. YES]
-initified function arg: _1_YES_print_init: [8. YES]
-initified function arg: _1_YES_print_init: [9. YES %s]
-initified function arg: _1_YES_print_init: [10. YES]
-initified function arg: _1_YES_print_init: [11. YES %s %d]
-initified function arg: _1_YES_print_init: [12. YES]
-initified function arg: _1_YES_print_init: [13. YES]
-initified function arg: _1_YES_print_init: [14. YES]
-initified function arg: _1_YES_print_init: [15. YES %s %s %s]
-initified function arg: _1_YES_print_init: [16. YES]
-initified function arg: _1_YES_print_init: [17. YES]
-initified function arg: _1_YES_print_init: [18. YES]
-initified function arg: _1_YES_print_init: [19. YES]
+initified function arg: _1_YES_print_init: ["2. YES %s"]
+initified function arg: _1_YES_print_init: ["3. YES\012"]
+initified function arg: _1_YES_print_init: ["4. YES %s %s %s"]
+initified function arg: _1_YES_print_init: ["5. YES"]
+initified function arg: _1_YES_print_init: ["6. YES"]
+initified function arg: _1_YES_print_init: ["7. YES"]
+initified function arg: _1_YES_print_init: ["8. YES"]
+initified function arg: _1_YES_print_init: ["9. YES %s"]
+initified function arg: _1_YES_print_init: ["10. YES"]
+initified function arg: _1_YES_print_init: ["11. YES %s %d"]
+initified function arg: _1_YES_print_init: ["12. YES"]
+initified function arg: _1_YES_print_init: ["13. YES"]
+initified function arg: _1_YES_print_init: ["14. YES"]
+initified function arg: _1_YES_print_init: ["15. YES %s %s %s"]
+initified function arg: _1_YES_print_init: ["16. YES"]
+initified function arg: _1_YES_print_init: ["17. YES"]
+initified function arg: _1_YES_print_init: ["18. YES"]
+initified function arg: _1_YES_print_init: ["19. YES"]
 initified local var: _20_YES_func: _20_YES_func
 initified local var: _21_YES_func: _21_YES_func
 initified function arg: _1_YES_print_init: ["22. YES"]
 initified function arg: _1_YES_print_init: ["23. YES"]
+initified local var, phi arg: _1_YES_print_init: ["24. YES"]
+initified local var, phi arg: _1_YES_print_init: ["25. YES"]
 
 objdump -s -j .init.rodata.str test
 */
@@ -117,10 +119,21 @@ int __attribute__((nocapture(-1))) print_simple_3(const char *format, const char
 void __init _1_YES_print_init(const char *str)
 {
 	unsigned int i;
+	const char *local_str, *local_str_2;
 	static const char static_str[] = "NO_cicamica";
 
 	printf("1. NO %s %s\n", static_str, str);
 
+	if (!str) {
+		local_str = "24. YES";
+		local_str_2 = "12. NO";
+	} else {
+		local_str = "25. YES";
+		local_str_2 = "13. NO";
+	}
+
+	print_simple_2(local_str);
+	printf(local_str_2);
 	print_simple_2(__func__);
 	print_simple("2. YES %s", "2. NO", "3. YES\n", "3. NO");
 	printf("4. NO\n");

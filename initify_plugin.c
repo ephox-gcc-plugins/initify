@@ -5,7 +5,7 @@
  * Homepage:
  * https://github.com/ephox-gcc-plugins/initify
  *
- * Move string constants (__func__ and function string arguments marked by the nocapture attribute)
+ * Move string constants (local variables and function string arguments marked by the nocapture attribute)
  * only referenced in __init/__exit functions to __initconst/__exitconst sections.
  * Based on an idea from Mathias Krause <minipli@ld-linux.so>.
  *
@@ -22,6 +22,40 @@ static struct plugin_info initify_plugin_info = {
 	.version	= "20160306",
 	.help		= "initify_plugin\n",
 };
+
+#define ARGNUM_NONE 0
+
+enum section_type {
+	INIT, EXIT, NONE
+};
+
+#if BUILDING_GCC_VERSION >= 5000
+typedef struct hash_set<const_gimple> gimple_set;
+
+static inline bool pointer_set_insert(gimple_set *visited, const_gimple stmt)
+{
+	return visited->add(stmt);
+}
+
+static inline bool pointer_set_contains(gimple_set *visited, const_gimple stmt)
+{
+	return visited->contains(stmt);
+}
+
+static inline gimple_set* pointer_set_create(void)
+{
+	return new hash_set<const_gimple>;
+}
+
+static inline void pointer_set_destroy(gimple_set *visited)
+{
+	delete visited;
+}
+#else
+typedef struct pointer_set_t gimple_set;
+#endif
+
+static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int first_stmt_call_num, tree node, enum section_type curfn_section);
 
 /* nocapture attribute:
  *  * to mark nocapture function arguments. If used on a vararg argument it applies to all of them
@@ -93,10 +127,6 @@ static void register_attributes(void __unused *event_data, void __unused *data)
 {
 	register_attribute(&nocapture_attr);
 }
-
-enum section_type {
-	INIT, EXIT, NONE
-};
 
 static enum section_type get_init_exit_section(const_tree decl)
 {
@@ -312,7 +342,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 
 		fndecl = gimple_call_fndecl(stmt);
 		gcc_assert(fndecl != NULL_TREE);
-/*		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count); */
+		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
 		return true;
 
 	}
@@ -360,17 +390,21 @@ static bool has_capture_use_local_var(const_tree vardecl)
 	return false;
 }
 
-static void search_local_strs(enum section_type curfn_section)
+static void search_local_str_arrays(enum section_type curfn_section)
 {
 	unsigned int i __unused;
 	tree var;
 
 	FOR_EACH_LOCAL_DECL(cfun, i, var) {
-		tree str, init_val = DECL_INITIAL(var);
+		tree str, init_val;
 
+		if (TREE_CODE(TREE_TYPE(var)) != ARRAY_TYPE)
+			continue;
+
+		init_val = DECL_INITIAL(var);
 		if (init_val == NULL_TREE || init_val == error_mark_node)
 			continue;
-		if (strcmp(DECL_NAME_POINTER(var), "__func__"))
+		if (TREE_CODE(init_val) != STRING_CST)
 			continue;
 
 		if (has_capture_use_local_var(var))
@@ -380,17 +414,19 @@ static void search_local_strs(enum section_type curfn_section)
 		gcc_assert(str);
 
 		if (set_init_exit_section(var, curfn_section)) {
-/*			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str)); */
+			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
 		}
 	}
 }
 
-static tree create_tmp_assign(gcall *stmt, unsigned int num)
+static tree create_decl(tree node)
 {
-	tree str, decl, arg = gimple_call_arg(stmt, num);
+	tree str, decl;
 
-	str = get_string_cst(arg);
-	decl = build_decl(DECL_SOURCE_LOCATION(current_function_decl), VAR_DECL, create_tmp_var_name("cicus"), TREE_TYPE(str));
+	str = get_string_cst(node);
+	gcc_assert(TREE_CODE(TREE_TYPE(str)) == ARRAY_TYPE);
+	gcc_assert(TREE_TYPE(TREE_TYPE(str)) != NULL_TREE && TREE_CODE(TREE_TYPE(TREE_TYPE(str))) == INTEGER_TYPE);
+	decl = build_decl(DECL_SOURCE_LOCATION(current_function_decl), VAR_DECL, create_tmp_var_name("initify"), TREE_TYPE(str));
 
 	DECL_INITIAL(decl) = str;
 	DECL_CONTEXT(decl) = current_function_decl;
@@ -398,6 +434,7 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 
 	TREE_STATIC(decl) = 1;
 	TREE_READONLY(decl) = 1;
+	TYPE_READONLY(TREE_TYPE(TREE_TYPE(decl))) = 1;
 	TREE_ADDRESSABLE(decl) = 1;
 	TREE_USED(decl) = 1;
 
@@ -408,13 +445,170 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 	varpool_mark_needed_node(varpool_node(decl));
 
 	DECL_CHAIN(decl) = BLOCK_VARS(DECL_INITIAL(current_function_decl));
-	BLOCK_VARS(DECL_INITIAL (current_function_decl)) = decl;
+	BLOCK_VARS(DECL_INITIAL(current_function_decl)) = decl;
+	return build_fold_addr_expr_loc(DECL_SOURCE_LOCATION(current_function_decl), decl);
+}
 
-	decl = build_fold_addr_expr_loc(DECL_SOURCE_LOCATION(current_function_decl), decl);
-	gimple_call_set_arg(stmt, num, decl);
+static void set_section_call_assign(gimple stmt, tree node, enum section_type curfn_section, unsigned int num)
+{
+	tree decl;
+
+	decl = create_decl(node);
+
+	switch (gimple_code(stmt)) {
+	case GIMPLE_ASSIGN:
+		gcc_assert(gimple_num_ops(stmt) == 2);
+		gimple_assign_set_rhs1(stmt, decl);
+		break;
+	case GIMPLE_CALL:
+		gimple_call_set_arg(stmt, num, decl);
+		break;
+	default:
+		debug_gimple_stmt(stmt);
+		error("%s: unknown gimple code", __func__);
+		gcc_unreachable();
+	}
+
 	update_stmt(stmt);
 
-	return TREE_OPERAND(decl, 0);
+	if (set_init_exit_section(TREE_OPERAND(decl, 0), curfn_section)) {
+		inform(gimple_location(stmt), "initified function arg: %E: [%E]", current_function_decl, get_string_cst(node));
+	}
+}
+
+static tree initify_create_new_var(tree type)
+{
+	tree new_var = create_tmp_var(type, "initify");
+
+	add_referenced_var(new_var);
+	mark_sym_for_renaming(new_var);
+	return new_var;
+}
+
+static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i, enum section_type curfn_section)
+{
+	gassign *assign;
+	gimple_stmt_iterator gsi;
+	basic_block arg_bb;
+	tree decl, arg;
+
+	arg = gimple_phi_arg_def(stmt, i);
+	decl = create_decl(arg);
+
+	assign = gimple_build_assign(ssa_var, decl);
+
+	arg_bb = gimple_phi_arg_edge(stmt, i)->src;
+	gcc_assert(arg_bb->index != 0);
+
+	gsi = gsi_after_labels(arg_bb);
+	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
+	update_stmt(assign);
+
+	if (set_init_exit_section(TREE_OPERAND(decl, 0), curfn_section)) {
+		inform(gimple_location(stmt), "initified local var, phi arg: %E: [%E]", current_function_decl, get_string_cst(arg));
+	}
+}
+
+static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, unsigned int first_stmt_call_num, enum section_type curfn_section)
+{
+	tree result, ssa_var;
+	unsigned int i;
+
+	result = gimple_phi_result(stmt);
+	ssa_var = initify_create_new_var(TREE_TYPE(result));
+
+	for (i = 0; i < gimple_phi_num_args(stmt); i++) {
+		tree str, arg = gimple_phi_arg_def(stmt, i);
+
+		str = get_string_cst(arg);
+		if (str == NULL_TREE) {
+			walk_def_stmt(visited, prev_stmt, first_stmt_call_num, arg, curfn_section);
+			return;
+		} else
+			initify_create_new_phi_arg(ssa_var, stmt, i, curfn_section);
+	}
+
+	switch (gimple_code(prev_stmt)) {
+	case GIMPLE_ASSIGN:
+		gcc_assert(gimple_num_ops(prev_stmt) == 2);
+		gimple_assign_set_rhs1(prev_stmt, ssa_var);
+		break;
+	case GIMPLE_CALL:
+		gimple_call_set_arg(prev_stmt, first_stmt_call_num, ssa_var);
+		break;
+	default:
+		debug_gimple_stmt(prev_stmt);
+		error("%s: unknown gimple code", __func__);
+		gcc_unreachable();
+	}
+
+	update_stmt(prev_stmt);
+}
+
+static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int first_stmt_call_num, tree node, enum section_type curfn_section)
+{
+	gimple def_stmt;
+
+	if (TREE_CODE(node) != SSA_NAME)
+		return;
+
+	def_stmt = SSA_NAME_DEF_STMT(node);
+	if (pointer_set_insert(visited, def_stmt))
+		return;
+
+	switch (gimple_code(def_stmt)) {
+	case GIMPLE_NOP:
+	case GIMPLE_CALL:
+	case GIMPLE_ASM:
+		break;
+	case GIMPLE_PHI:
+		set_section_phi(visited, prev_stmt, as_a_gphi(def_stmt), first_stmt_call_num, curfn_section);
+		break;
+	case GIMPLE_ASSIGN: {
+		tree rhs1, str;
+
+		if (gimple_num_ops(def_stmt) != 2)
+			break;
+
+		rhs1 = gimple_assign_rhs1(def_stmt);
+		str = get_string_cst(rhs1);
+		if (str != NULL_TREE)
+			set_section_call_assign(def_stmt, rhs1, curfn_section, 0);
+		walk_def_stmt(visited, def_stmt, 0, rhs1, curfn_section);
+		break;
+	}
+	default:
+		debug_gimple_stmt(def_stmt);
+		error("%s: unknown gimple code", __func__);
+		gcc_unreachable();
+	}
+}
+
+static void search_var_param(gcall *stmt, enum section_type curfn_section)
+{
+	unsigned int num;
+
+	for (num = 0; num < gimple_call_num_args(stmt); num++) {
+		gimple_set *visited;
+		const_tree type;
+		tree str, arg = gimple_call_arg(stmt, num);
+
+		str = get_string_cst(arg);
+		if (str != NULL_TREE)
+			continue;
+
+		if (TREE_CODE(TREE_TYPE(arg)) != POINTER_TYPE)
+			continue;
+		type = TREE_TYPE(TREE_TYPE(arg));
+		if (!TYPE_STRING_FLAG(type))
+			continue;
+		if (!is_nocapture_param(stmt, num + 1))
+			continue;
+
+		visited = pointer_set_create();
+		walk_def_stmt(visited, stmt, num, arg, curfn_section);
+		pointer_set_destroy(visited);
+	}
 }
 
 static void search_str_param(gcall *stmt, enum section_type curfn_section)
@@ -422,20 +616,14 @@ static void search_str_param(gcall *stmt, enum section_type curfn_section)
 	unsigned int num;
 
 	for (num = 0; num < gimple_call_num_args(stmt); num++) {
-		tree var, str, arg = gimple_call_arg(stmt, num);
+		tree str, arg = gimple_call_arg(stmt, num);
 
 		str = get_string_cst(arg);
 		if (str == NULL_TREE)
 			continue;
-		gcc_assert(TREE_READONLY(str));
 
-		if (!is_nocapture_param(stmt, num + 1))
-			continue;
-
-		var = create_tmp_assign(stmt, num);
-		if (set_init_exit_section(var, curfn_section)) {
-/*			inform(gimple_location(stmt), "initified function arg: %E: [%E]", current_function_decl, str); */
-		}
+		if (is_nocapture_param(stmt, num + 1))
+			set_section_call_assign(stmt, arg, curfn_section, num);
 	}
 }
 
@@ -468,8 +656,10 @@ static void search_const_strs(enum section_type curfn_section)
 				continue;
 
 			call_stmt = as_a_gcall(stmt);
-			if (has_nocapture_param(call_stmt))
-				search_str_param(call_stmt, curfn_section);
+			if (!has_nocapture_param(call_stmt))
+				continue;
+			search_str_param(call_stmt, curfn_section);
+			search_var_param(call_stmt, curfn_section);
 		}
 	}
 }
@@ -481,7 +671,7 @@ static unsigned int initify_execute(void)
 	if (curfn_section == NONE)
 		return 0;
 
-	search_local_strs(curfn_section);
+	search_local_str_arrays(curfn_section);
 	search_const_strs(curfn_section);
 
 	return 0;
@@ -490,7 +680,7 @@ static unsigned int initify_execute(void)
 #define PASS_NAME initify
 
 #define NO_GATE
-#define TODO_FLAGS_FINISH TODO_dump_func | TODO_verify_ssa | TODO_verify_stmts | TODO_remove_unused_locals | TODO_update_ssa_no_phi | TODO_cleanup_cfg | TODO_ggc_collect | TODO_verify_flow
+#define TODO_FLAGS_FINISH TODO_dump_func | TODO_verify_ssa | TODO_verify_stmts | TODO_remove_unused_locals | TODO_cleanup_cfg | TODO_ggc_collect | TODO_verify_flow | TODO_update_ssa
 
 #include "gcc-generate-gimple-pass.h"
 
