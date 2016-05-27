@@ -14,6 +14,12 @@
  * -fplugin-arg-initify_plugin-verbose
  * -fplugin-arg-initify_plugin-print_missing
  *
+ * Attribute: __attribute__((nocapture(x, y ...)))
+ *  The nocapture gcc attribute can be on functions only.
+ *  The attribute takes one or more unsigned integer constants as parameters
+ *  that specify the function argument(s) of const char* type to initify.
+ *  If the marked argument is a vararg then the plugin initifies all vararg arguments.
+ *
  * Usage:
  * $ make
  * $ make run
