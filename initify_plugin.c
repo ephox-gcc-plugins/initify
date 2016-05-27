@@ -427,6 +427,7 @@ static void search_str_param(gcall *stmt, enum section_type curfn_section)
 		str = get_string_cst(arg);
 		if (str == NULL_TREE)
 			continue;
+		gcc_assert(TREE_READONLY(str));
 
 		if (!is_nocapture_param(stmt, num + 1))
 			continue;
