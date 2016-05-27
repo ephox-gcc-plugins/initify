@@ -72,6 +72,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 	case FUNCTION_TYPE:
 	case METHOD_TYPE:
 		break;
+
 	case TYPE_DECL: {
 		const_tree fntype = TREE_TYPE(*node);
 
@@ -81,6 +82,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 			break;
 		/* FALLTHROUGH */
 	}
+
 	default:
 		debug_tree(*node);
 		error("%s: %qE attribute only applies to functions", __func__, name);
@@ -170,6 +172,7 @@ static tree get_string_cst(tree var)
 		}
 		break;
 	}
+
 	default:
 		break;
 	}
@@ -300,12 +303,15 @@ static bool compare_ops(const_tree vardecl, tree op)
 	switch (TREE_CODE_CLASS(TREE_CODE(op))) {
 	case tcc_declaration:
 		return is_same_vardecl(op, vardecl);
+
 	case tcc_exceptional:
 		return check_constructor(op, vardecl);
+
 	case tcc_constant:
 	case tcc_statement:
 	case tcc_comparison:
 		return false;
+
 	default:
 		break;
 	}
@@ -390,7 +396,7 @@ static bool has_capture_use_local_var(const_tree vardecl)
 	return false;
 }
 
-static void search_local_str_arrays(enum section_type curfn_section)
+static void find_local_str(enum section_type curfn_section)
 {
 	unsigned int i __unused;
 	tree var;
@@ -460,9 +466,11 @@ static void set_section_call_assign(gimple stmt, tree node, enum section_type cu
 		gcc_assert(gimple_num_ops(stmt) == 2);
 		gimple_assign_set_rhs1(stmt, decl);
 		break;
+
 	case GIMPLE_CALL:
 		gimple_call_set_arg(stmt, num, decl);
 		break;
+
 	default:
 		debug_gimple_stmt(stmt);
 		error("%s: unknown gimple code", __func__);
@@ -518,10 +526,9 @@ static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, u
 	ssa_var = initify_create_new_var(TREE_TYPE(result));
 
 	for (i = 0; i < gimple_phi_num_args(stmt); i++) {
-		tree str, arg = gimple_phi_arg_def(stmt, i);
+		tree arg = gimple_phi_arg_def(stmt, i);
 
-		str = get_string_cst(arg);
-		if (str == NULL_TREE) {
+		if (get_string_cst(arg) == NULL_TREE) {
 			walk_def_stmt(visited, prev_stmt, first_stmt_call_num, arg, curfn_section);
 			return;
 		} else
@@ -533,9 +540,11 @@ static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, u
 		gcc_assert(gimple_num_ops(prev_stmt) == 2);
 		gimple_assign_set_rhs1(prev_stmt, ssa_var);
 		break;
+
 	case GIMPLE_CALL:
 		gimple_call_set_arg(prev_stmt, first_stmt_call_num, ssa_var);
 		break;
+
 	default:
 		debug_gimple_stmt(prev_stmt);
 		error("%s: unknown gimple code", __func__);
@@ -561,9 +570,11 @@ static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int fi
 	case GIMPLE_CALL:
 	case GIMPLE_ASM:
 		break;
+
 	case GIMPLE_PHI:
 		set_section_phi(visited, prev_stmt, as_a_gphi(def_stmt), first_stmt_call_num, curfn_section);
 		break;
+
 	case GIMPLE_ASSIGN: {
 		tree rhs1, str;
 
@@ -577,6 +588,7 @@ static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int fi
 		walk_def_stmt(visited, def_stmt, 0, rhs1, curfn_section);
 		break;
 	}
+
 	default:
 		debug_gimple_stmt(def_stmt);
 		error("%s: unknown gimple code", __func__);
@@ -671,7 +683,7 @@ static unsigned int initify_execute(void)
 	if (curfn_section == NONE)
 		return 0;
 
-	search_local_str_arrays(curfn_section);
+	find_local_str(curfn_section);
 	search_const_strs(curfn_section);
 
 	return 0;
