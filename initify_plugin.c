@@ -9,6 +9,11 @@
  * only referenced in __init/__exit functions to __initconst/__exitconst sections.
  * Based on an idea from Mathias Krause <minipli@ld-linux.so>.
  *
+ * Options:
+ * -fplugin-arg-initify_plugin-disable
+ * -fplugin-arg-initify_plugin-verbose
+ * -fplugin-arg-initify_plugin-print_missing
+ *
  * Usage:
  * $ make
  * $ make run
@@ -24,6 +29,7 @@ static struct plugin_info initify_plugin_info = {
 };
 
 #define ARGNUM_NONE 0
+static bool verbose, print_missing;
 
 enum section_type {
 	INIT, EXIT, NONE
@@ -348,7 +354,9 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 
 		fndecl = gimple_call_fndecl(stmt);
 		gcc_assert(fndecl != NULL_TREE);
-		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
+
+		if (print_missing)
+			inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
 		return true;
 
 	}
@@ -419,9 +427,8 @@ static void find_local_str(enum section_type curfn_section)
 		str = get_string_cst(init_val);
 		gcc_assert(str);
 
-		if (set_init_exit_section(var, curfn_section)) {
+		if (set_init_exit_section(var, curfn_section) && verbose)
 			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
-		}
 	}
 }
 
@@ -479,9 +486,8 @@ static void set_section_call_assign(gimple stmt, tree node, enum section_type cu
 
 	update_stmt(stmt);
 
-	if (set_init_exit_section(TREE_OPERAND(decl, 0), curfn_section)) {
+	if (set_init_exit_section(TREE_OPERAND(decl, 0), curfn_section) && verbose)
 		inform(gimple_location(stmt), "initified function arg: %E: [%E]", current_function_decl, get_string_cst(node));
-	}
 }
 
 static tree initify_create_new_var(tree type)
@@ -512,9 +518,8 @@ static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i,
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
-	if (set_init_exit_section(TREE_OPERAND(decl, 0), curfn_section)) {
+	if (set_init_exit_section(TREE_OPERAND(decl, 0), curfn_section) && verbose)
 		inform(gimple_location(stmt), "initified local var, phi arg: %E: [%E]", current_function_decl, get_string_cst(arg));
-	}
 }
 
 static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, unsigned int first_stmt_call_num, enum section_type curfn_section)
@@ -719,8 +724,12 @@ static void initify_start_unit(void __unused *gcc_data, void __unused *user_data
 
 int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version *version)
 {
-	const char * const plugin_name = plugin_info->base_name;
 	struct register_pass_info initify_pass_info;
+	int i;
+	const int argc = plugin_info->argc;
+	bool enabled = true;
+	const struct plugin_argument * const argv = plugin_info->argv;
+	const char * const plugin_name = plugin_info->base_name;
 
 	initify_pass_info.pass				= make_initify_pass();
 	initify_pass_info.reference_pass_name		= "nrv";
@@ -732,10 +741,28 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 		return 1;
 	}
 
+	for (i = 0; i < argc; ++i) {
+		if (!(strcmp(argv[i].key, "disable"))) {
+			enabled = false;
+			continue;
+		}
+		if (!strcmp(argv[i].key, "verbose")) {
+			verbose = true;
+			continue;
+		}
+		if (!strcmp(argv[i].key, "print_missing")) {
+			print_missing = true;
+			continue;
+		}
+		error(G_("unkown option '-fplugin-arg-%s-%s'"), plugin_name, argv[i].key);
+	}
+
 	register_callback(plugin_name, PLUGIN_INFO, NULL, &initify_plugin_info);
-	register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &initify_pass_info);
+	if (enabled) {
+		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &initify_pass_info);
+		register_callback(plugin_name, PLUGIN_START_UNIT, initify_start_unit, NULL);
+	}
 	register_callback(plugin_name, PLUGIN_ATTRIBUTES, register_attributes, NULL);
-	register_callback(plugin_name, PLUGIN_START_UNIT, initify_start_unit, NULL);
 
 	return 0;
 }
