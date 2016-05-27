@@ -7,6 +7,7 @@
  *
  * Move string constants (__func__ and function string arguments marked by the nocapture attribute)
  * only referenced in __init/__exit functions to __initconst/__exitconst sections.
+ * Based on an idea from Mathias Krause <minipli@ld-linux.so>.
  *
  * Usage:
  * $ make
