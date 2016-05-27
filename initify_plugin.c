@@ -44,7 +44,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 			fntype = TREE_TYPE(fntype);
 		if (TREE_CODE(fntype) == FUNCTION_TYPE || TREE_CODE(fntype) == METHOD_TYPE)
 			break;
-		// FALLTHROUGH
+		/* FALLTHROUGH */
 	}
 	default:
 		debug_tree(*node);
@@ -93,26 +93,30 @@ static void register_attributes(void __unused *event_data, void __unused *data)
 	register_attribute(&nocapture_attr);
 }
 
-static const char *get_init_exit_section(const_tree decl)
+enum section_type {
+	INIT, EXIT, NONE
+};
+
+static enum section_type get_init_exit_section(const_tree decl)
 {
 	const_tree section;
 	tree attr_value;
 
 	section = lookup_attribute("section", DECL_ATTRIBUTES(decl));
 	if (!section)
-		return NULL;
+		return NONE;
 
 	gcc_assert(TREE_VALUE(section));
 	for (attr_value = TREE_VALUE(section); attr_value; attr_value = TREE_CHAIN(attr_value)) {
 		const char *str = TREE_STRING_POINTER(TREE_VALUE(attr_value));
 
 		if (!strncmp(str, ".init.", 6))
-			return str;
+			return INIT;
 		if (!strncmp(str, ".exit.", 6))
-			return str;
+			return EXIT;
 	}
 
-	return NULL;
+	return NONE;
 }
 
 static tree get_string_cst(tree var)
@@ -141,17 +145,17 @@ static tree get_string_cst(tree var)
 	return NULL_TREE;
 }
 
-static bool set_init_exit_section(tree decl, bool initexit)
+static bool set_init_exit_section(tree decl, enum section_type curfn_section)
 {
-	const char *str;
+	enum section_type decl_section;
 
 	gcc_assert(DECL_P(decl));
 
-	str = get_init_exit_section(decl);
-	if (str)
+	decl_section = get_init_exit_section(decl);
+	if (decl_section != NONE)
 		return false;
 
-	if (initexit)
+	if (curfn_section == INIT)
 		set_decl_section_name(decl, ".init.rodata.str");
 	else
 		set_decl_section_name(decl, ".exit.rodata.str");
@@ -299,7 +303,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		if (!is_gimple_call(stmt))
 			return true;
 
-		// return, fndecl
+		/* return, fndecl */
 		gcc_assert(i >= 3);
 		arg_count = i - 2;
 		if (is_nocapture_param(as_a_const_gcall(stmt), (int)arg_count))
@@ -307,7 +311,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 
 		fndecl = gimple_call_fndecl(stmt);
 		gcc_assert(fndecl != NULL_TREE);
-//		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
+/*		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count); */
 		return true;
 
 	}
@@ -355,7 +359,7 @@ static bool has_capture_use_local_var(const_tree vardecl)
 	return false;
 }
 
-static void search_local_strs(bool initexit)
+static void search_local_strs(enum section_type curfn_section)
 {
 	unsigned int i __unused;
 	tree var;
@@ -365,7 +369,6 @@ static void search_local_strs(bool initexit)
 
 		if (init_val == NULL_TREE || init_val == error_mark_node)
 			continue;
-		// !!! str local vars
 		if (strcmp(DECL_NAME_POINTER(var), "__func__"))
 			continue;
 
@@ -375,8 +378,8 @@ static void search_local_strs(bool initexit)
 		str = get_string_cst(init_val);
 		gcc_assert(str);
 
-		if (set_init_exit_section(var, initexit)) {
-//			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
+		if (set_init_exit_section(var, curfn_section)) {
+/*			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str)); */
 		}
 	}
 }
@@ -413,7 +416,7 @@ static tree create_tmp_assign(gcall *stmt, unsigned int num)
 	return TREE_OPERAND(decl, 0);
 }
 
-static void search_str_param(gcall *stmt, bool initexit)
+static void search_str_param(gcall *stmt, enum section_type curfn_section)
 {
 	unsigned int num;
 
@@ -428,8 +431,8 @@ static void search_str_param(gcall *stmt, bool initexit)
 			continue;
 
 		var = create_tmp_assign(stmt, num);
-		if (set_init_exit_section(var, initexit)) {
-//			inform(gimple_location(stmt), "initified function arg: %E: [%E]", current_function_decl, str);
+		if (set_init_exit_section(var, curfn_section)) {
+/*			inform(gimple_location(stmt), "initified function arg: %E: [%E]", current_function_decl, str); */
 		}
 	}
 }
@@ -448,7 +451,7 @@ static bool has_nocapture_param(const gcall *stmt)
 	return attr != NULL_TREE;
 }
 
-static void search_const_strs(bool initexit)
+static void search_const_strs(enum section_type curfn_section)
 {
 	basic_block bb;
 
@@ -464,22 +467,20 @@ static void search_const_strs(bool initexit)
 
 			call_stmt = as_a_gcall(stmt);
 			if (has_nocapture_param(call_stmt))
-				search_str_param(call_stmt, initexit);
+				search_str_param(call_stmt, curfn_section);
 		}
 	}
 }
 
 static unsigned int initify_execute(void)
 {
-	bool initexit;
-	const char *section = get_init_exit_section(current_function_decl);
+	enum section_type curfn_section = get_init_exit_section(current_function_decl);
 
-	if (!section)
+	if (curfn_section == NONE)
 		return 0;
 
-	initexit = !strncmp(section, ".init.", 6);
-	search_local_strs(initexit);
-	search_const_strs(initexit);
+	search_local_strs(curfn_section);
+	search_const_strs(curfn_section);
 
 	return 0;
 }
