@@ -68,7 +68,7 @@ static inline void pointer_set_destroy(gimple_set *visited)
 typedef struct pointer_set_t gimple_set;
 #endif
 
-static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int first_stmt_call_num, tree node, enum section_type curfn_section);
+static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int first_stmt_call_num, tree node);
 
 /* nocapture attribute:
  *  * to mark nocapture function arguments. If used on a vararg argument it applies to all of them
@@ -192,17 +192,14 @@ static tree get_string_cst(tree var)
 	return NULL_TREE;
 }
 
-static bool set_init_exit_section(tree decl, enum section_type curfn_section)
+static bool set_init_exit_section(tree decl)
 {
-	enum section_type decl_section;
-
 	gcc_assert(DECL_P(decl));
 
-	decl_section = get_init_exit_section(decl);
-	if (decl_section != NONE)
+	if (get_init_exit_section(decl) != NONE)
 		return false;
 
-	if (curfn_section == INIT)
+	if (get_init_exit_section(current_function_decl) == INIT)
 		set_decl_section_name(decl, ".init.rodata.str");
 	else
 		set_decl_section_name(decl, ".exit.rodata.str");
@@ -411,7 +408,7 @@ static bool has_capture_use_local_var(const_tree vardecl)
 	return false;
 }
 
-static void find_local_str(enum section_type curfn_section)
+static void find_local_str(void)
 {
 	unsigned int i __unused;
 	tree var;
@@ -434,7 +431,7 @@ static void find_local_str(enum section_type curfn_section)
 		str = get_string_cst(init_val);
 		gcc_assert(str);
 
-		if (set_init_exit_section(var, curfn_section) && verbose)
+		if (set_init_exit_section(var) && verbose)
 			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
 	}
 }
@@ -469,7 +466,7 @@ static tree create_decl(tree node)
 	return build_fold_addr_expr_loc(DECL_SOURCE_LOCATION(current_function_decl), decl);
 }
 
-static void set_section_call_assign(gimple stmt, tree node, enum section_type curfn_section, unsigned int num)
+static void set_section_call_assign(gimple stmt, tree node, unsigned int num)
 {
 	tree decl;
 
@@ -493,7 +490,7 @@ static void set_section_call_assign(gimple stmt, tree node, enum section_type cu
 
 	update_stmt(stmt);
 
-	if (set_init_exit_section(TREE_OPERAND(decl, 0), curfn_section) && verbose)
+	if (set_init_exit_section(TREE_OPERAND(decl, 0)) && verbose)
 		inform(gimple_location(stmt), "initified function arg: %E: [%E]", current_function_decl, get_string_cst(node));
 }
 
@@ -506,7 +503,7 @@ static tree initify_create_new_var(tree type)
 	return new_var;
 }
 
-static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i, enum section_type curfn_section)
+static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i)
 {
 	gassign *assign;
 	gimple_stmt_iterator gsi;
@@ -525,11 +522,11 @@ static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i,
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
-	if (set_init_exit_section(TREE_OPERAND(decl, 0), curfn_section) && verbose)
+	if (set_init_exit_section(TREE_OPERAND(decl, 0)) && verbose)
 		inform(gimple_location(stmt), "initified local var, phi arg: %E: [%E]", current_function_decl, get_string_cst(arg));
 }
 
-static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, unsigned int first_stmt_call_num, enum section_type curfn_section)
+static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, unsigned int first_stmt_call_num)
 {
 	tree result, ssa_var;
 	unsigned int i;
@@ -541,10 +538,10 @@ static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, u
 		tree arg = gimple_phi_arg_def(stmt, i);
 
 		if (get_string_cst(arg) == NULL_TREE) {
-			walk_def_stmt(visited, prev_stmt, first_stmt_call_num, arg, curfn_section);
+			walk_def_stmt(visited, prev_stmt, first_stmt_call_num, arg);
 			return;
 		} else
-			initify_create_new_phi_arg(ssa_var, stmt, i, curfn_section);
+			initify_create_new_phi_arg(ssa_var, stmt, i);
 	}
 
 	switch (gimple_code(prev_stmt)) {
@@ -566,7 +563,7 @@ static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, u
 	update_stmt(prev_stmt);
 }
 
-static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int first_stmt_call_num, tree node, enum section_type curfn_section)
+static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int first_stmt_call_num, tree node)
 {
 	gimple def_stmt;
 
@@ -584,7 +581,7 @@ static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int fi
 		break;
 
 	case GIMPLE_PHI:
-		set_section_phi(visited, prev_stmt, as_a_gphi(def_stmt), first_stmt_call_num, curfn_section);
+		set_section_phi(visited, prev_stmt, as_a_gphi(def_stmt), first_stmt_call_num);
 		break;
 
 	case GIMPLE_ASSIGN: {
@@ -596,8 +593,8 @@ static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int fi
 		rhs1 = gimple_assign_rhs1(def_stmt);
 		str = get_string_cst(rhs1);
 		if (str != NULL_TREE)
-			set_section_call_assign(def_stmt, rhs1, curfn_section, 0);
-		walk_def_stmt(visited, def_stmt, 0, rhs1, curfn_section);
+			set_section_call_assign(def_stmt, rhs1, 0);
+		walk_def_stmt(visited, def_stmt, 0, rhs1);
 		break;
 	}
 
@@ -608,7 +605,7 @@ static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int fi
 	}
 }
 
-static void search_var_param(gcall *stmt, enum section_type curfn_section)
+static void search_var_param(gcall *stmt)
 {
 	unsigned int num;
 
@@ -630,12 +627,12 @@ static void search_var_param(gcall *stmt, enum section_type curfn_section)
 			continue;
 
 		visited = pointer_set_create();
-		walk_def_stmt(visited, stmt, num, arg, curfn_section);
+		walk_def_stmt(visited, stmt, num, arg);
 		pointer_set_destroy(visited);
 	}
 }
 
-static void search_str_param(gcall *stmt, enum section_type curfn_section)
+static void search_str_param(gcall *stmt)
 {
 	unsigned int num;
 
@@ -647,7 +644,7 @@ static void search_str_param(gcall *stmt, enum section_type curfn_section)
 			continue;
 
 		if (is_nocapture_param(stmt, num + 1))
-			set_section_call_assign(stmt, arg, curfn_section, num);
+			set_section_call_assign(stmt, arg, num);
 	}
 }
 
@@ -665,7 +662,7 @@ static bool has_nocapture_param(const gcall *stmt)
 	return attr != NULL_TREE;
 }
 
-static void search_const_strs(enum section_type curfn_section)
+static void search_const_strs(void)
 {
 	basic_block bb;
 
@@ -682,21 +679,19 @@ static void search_const_strs(enum section_type curfn_section)
 			call_stmt = as_a_gcall(stmt);
 			if (!has_nocapture_param(call_stmt))
 				continue;
-			search_str_param(call_stmt, curfn_section);
-			search_var_param(call_stmt, curfn_section);
+			search_str_param(call_stmt);
+			search_var_param(call_stmt);
 		}
 	}
 }
 
 static unsigned int initify_execute(void)
 {
-	enum section_type curfn_section = get_init_exit_section(current_function_decl);
-
-	if (curfn_section == NONE)
+	if (get_init_exit_section(current_function_decl) == NONE)
 		return 0;
 
-	find_local_str(curfn_section);
-	search_const_strs(curfn_section);
+	find_local_str();
+	search_const_strs();
 
 	return 0;
 }
