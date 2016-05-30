@@ -103,11 +103,6 @@ int __attribute__((nocapture(1))) print_vararg_3(const char *d, const char *str,
 	return printf(d);
 }
 
-static int __printf(1, 3) print_simple_should_init(const char *format, const char *d, const char *str, const char *str2)
-{
-	return printf(format, str, str2);
-}
-
 static int __attribute__((nocapture(1))) print_simple_2(const char *format)
 {
 	return printf(format, format, format);
@@ -121,6 +116,12 @@ int __attribute__((nocapture(-1))) print_simple_3(const char *format, const char
 static int __attribute__((nocapture(1))) print_simple_4(const char *format)
 {
 	return printf(format, format, format);
+}
+
+static int __printf(1, 3) print_simple_should_init(const char *format, const char *d, const char *str, const char *str2)
+{
+	print_simple_4("SHOULD_INIT");
+	return printf(format, str, str2);
 }
 
 void __exit _1_YES_print_exit(const char *str)

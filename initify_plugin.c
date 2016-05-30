@@ -713,7 +713,7 @@ static bool should_init(struct cgraph_node *callee)
 	const_tree callee_decl = NODE_DECL(callee);
 	bool only_init_callers = true;
 
-	if (NODE_SYMBOL(callee)->aux)
+	if (NODE_SYMBOL(callee)->aux != (void *)NONE)
 		return false;
 	if (get_init_exit_section(callee_decl) != NONE)
 		return false;
@@ -731,7 +731,7 @@ static bool should_init(struct cgraph_node *callee)
 	for (; e; e = e->next_caller) {
 		struct cgraph_node *caller = e->caller;
 
-		if (get_init_exit_section(NODE_DECL(caller)) == NONE && !NODE_SYMBOL(caller)->aux)
+		if (get_init_exit_section(NODE_DECL(caller)) == NONE && NODE_SYMBOL(caller)->aux == (void *)NONE)
 			only_init_callers = false;
 	}
 
@@ -745,6 +745,7 @@ static bool search_init_callers(void)
 
 	FOR_EACH_FUNCTION(node) {
 		struct cgraph_edge *e;
+		enum section_type section;
 		const_tree cur_fndecl = NODE_DECL(node);
 
 		if (DECL_ARTIFICIAL(cur_fndecl))
@@ -752,17 +753,39 @@ static bool search_init_callers(void)
 		if (DECL_BUILT_IN(cur_fndecl))
 			continue;
 
-		if (get_init_exit_section(cur_fndecl) == NONE)
+		section = get_init_exit_section(cur_fndecl);
+		if (section == NONE)
 			continue;
 
 		for (e = node->callees; e; e = e->next_callee) {
-			if (should_init(e->callee)) {
-				change = true;
-				NODE_SYMBOL(e->callee)->aux = (void *)1;
-			}
+			if (!should_init(e->callee))
+				continue;
+			change = true;
+			gcc_assert(NODE_SYMBOL(e->callee)->aux == (void *)NONE);
+			NODE_SYMBOL(e->callee)->aux = (void *)section;
 		}
 	}
 	return change;
+}
+
+static void move_function_to_init_exit_text(struct cgraph_node *node)
+{
+	const char *section_name;
+	tree section_str, attr_args, fndecl = NODE_DECL(node);
+
+	section_name = NODE_SYMBOL(node)->aux == (void *)INIT ? ".init.text" : ".exit.text";
+
+	if (verbose)
+		inform(DECL_SOURCE_LOCATION(fndecl), "%s is missing from the %qE function", section_name, fndecl);
+
+	DECL_ATTRIBUTES(fndecl) = copy_list(DECL_ATTRIBUTES(fndecl));
+
+	section_str = build_string(strlen(section_name) + 1, section_name);
+	TREE_READONLY(section_str) = 1;
+	TREE_STATIC(section_str) = 1;
+	attr_args = build_tree_list(NULL_TREE, section_str);
+
+	DECL_ATTRIBUTES(fndecl) = tree_cons(get_identifier("__section__"), attr_args, DECL_ATTRIBUTES(fndecl));
 }
 
 static unsigned int search_init_functions_execute(void)
@@ -773,15 +796,14 @@ static unsigned int search_init_functions_execute(void)
 		return 0;
 
 	FOR_EACH_FUNCTION(node)
-		NODE_SYMBOL(node)->aux = NULL;
+		NODE_SYMBOL(node)->aux = (void *)NONE;
 
 	while (search_init_callers()) {};
 
 	FOR_EACH_FUNCTION(node) {
-		const_tree fndecl = NODE_DECL(node);
+		if (NODE_SYMBOL(node)->aux != (void *)NONE)
+			move_function_to_init_exit_text(node);
 
-		if (NODE_SYMBOL(node)->aux)
-			inform(DECL_SOURCE_LOCATION(fndecl), "__init or __exit is missing from the %qE function", fndecl);
 		NODE_SYMBOL(node)->aux = NULL;
 	}
 
