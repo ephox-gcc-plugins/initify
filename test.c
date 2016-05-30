@@ -34,9 +34,11 @@ objdump -s -j .init.rodata.str test
 
 #define __section(S) __attribute__ ((__section__(#S)))
 #define __init __section(.init.text)
+#define __exit __section(.exit.text)
 
 #define __constsection(x) __section(x)
 #define __initconst __constsection(.init.rodata)
+#define __exitconst __constsection(.exit.rodata)
 
 #define __printf(a, b) __attribute__((nocapture(a, b)))
 
@@ -119,6 +121,11 @@ int __attribute__((nocapture(-1))) print_simple_3(const char *format, const char
 static int __attribute__((nocapture(1))) print_simple_4(const char *format)
 {
 	return printf(format, format, format);
+}
+
+void __exit _1_YES_print_exit(const char *str)
+{
+	print_simple_4(__func__);
 }
 
 void __init _1_YES_print_init(const char *str)
