@@ -101,12 +101,12 @@ int __attribute__((nocapture(1))) print_vararg_3(const char *d, const char *str,
 	return printf(d);
 }
 
-int __printf(1, 3) print_simple(const char *format, const char *d, const char *str, const char *str2)
+static int __printf(1, 3) print_simple_should_init(const char *format, const char *d, const char *str, const char *str2)
 {
 	return printf(format, str, str2);
 }
 
-int __attribute__((nocapture(1))) print_simple_2(const char *format)
+static int __attribute__((nocapture(1))) print_simple_2(const char *format)
 {
 	return printf(format, format, format);
 }
@@ -116,10 +116,16 @@ int __attribute__((nocapture(-1))) print_simple_3(const char *format, const char
 	return printf(format, d);
 }
 
+static int __attribute__((nocapture(1))) print_simple_4(const char *format)
+{
+	return printf(format, format, format);
+}
+
 void __init _1_YES_print_init(const char *str)
 {
 	unsigned int i;
 	const char *local_str, *local_str_2;
+	int (*print_fn)(const char *format);
 	static const char static_str[] = "NO_cicamica";
 
 	printf("1. NO %s %s\n", static_str, str);
@@ -132,10 +138,15 @@ void __init _1_YES_print_init(const char *str)
 		local_str_2 = "13. NO";
 	}
 
+	if (str)
+		print_fn = &print_simple_2;
+	else
+		print_fn = &print_simple_4;
+	print_fn("47. NO");
 	print_simple_2(local_str);
 	printf(local_str_2);
 	print_simple_2(__func__);
-	print_simple("2. YES %s", "2. NO", "3. YES\n", "3. NO");
+	print_simple_should_init("2. YES %s", "2. NO", "3. YES\n", "3. NO");
 	printf("4. NO\n");
 	print_vararg("5. NO", "6. NO", "4. YES %s %s %s", "5. YES", "6. YES", "7. YES");
 	print_vararg_no_vararg("7. NO", "8. YES", "9. YES %s", "8. NO");
@@ -143,6 +154,29 @@ void __init _1_YES_print_init(const char *str)
 	print_vararg_2("13. YES", "14. YES", "15. YES %s %s %s", "16. YES", "17. YES", "18. YES");
 	print_vararg_3("19. YES", "10. NO", "11. NO %s %s %s");
 	print_simple_3("22. YES", "23. YES");
+}
+
+void _21_not_init(const char *str)
+{
+	unsigned int i;
+	const char *local_str_2;
+	static const char static_str[] = "14. NO_cicamica";
+
+	printf("15. NO %s %s\n", static_str, str);
+
+	if (!str)
+		local_str_2 = "17. NO";
+	else
+		local_str_2 = "19. NO";
+
+	printf(local_str_2);
+	printf("20. NO\n");
+	print_vararg("22. NO", "23. NO", "24. NO %s %s %s", "25. NO", "26. NO", "27. NO");
+	print_vararg_no_vararg("28. NO", "29. NO", "30. NO %s", "31. NO");
+	print_format_and_vararg("32. NO", "33. NO", "34. NO %s %d", "35. YES");
+	print_vararg_2("36. NO", "37. NO", "38. NO %s %s %s", "39. NO", "40. NO", "41. NO");
+	print_vararg_3("42. NO", "43. NO", "44. NO %s %s %s");
+	print_simple_3("45. NO", "46. NO");
 }
 
 void __init _20_YES_func(void)

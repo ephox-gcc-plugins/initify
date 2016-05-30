@@ -12,7 +12,8 @@
  * Options:
  * -fplugin-arg-initify_plugin-disable
  * -fplugin-arg-initify_plugin-verbose
- * -fplugin-arg-initify_plugin-print_missing
+ * -fplugin-arg-initify_plugin-print_missing_attr
+ * -fplugin-arg-initify_plugin-print_missing_init
  *
  * Attribute: __attribute__((nocapture(x, y ...)))
  *  The nocapture gcc attribute can be on functions only.
@@ -35,7 +36,7 @@ static struct plugin_info initify_plugin_info = {
 };
 
 #define ARGNUM_NONE 0
-static bool verbose, print_missing;
+static bool verbose, print_missing_attr, print_missing_init;
 
 enum section_type {
 	INIT, EXIT, NONE
@@ -361,7 +362,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		fndecl = gimple_call_fndecl(stmt);
 		gcc_assert(fndecl != NULL_TREE);
 
-		if (print_missing)
+		if (print_missing_attr)
 			inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
 		return true;
 
@@ -701,11 +702,108 @@ static unsigned int initify_execute(void)
 }
 
 #define PASS_NAME initify
-
 #define NO_GATE
 #define TODO_FLAGS_FINISH TODO_dump_func | TODO_verify_ssa | TODO_verify_stmts | TODO_remove_unused_locals | TODO_cleanup_cfg | TODO_ggc_collect | TODO_verify_flow | TODO_update_ssa
 
 #include "gcc-generate-gimple-pass.h"
+
+static bool search_init_functions_gate(void)
+{
+	return print_missing_init;
+}
+
+static bool should_init(struct cgraph_node *callee)
+{
+	struct cgraph_edge *e;
+	const_tree callee_decl = NODE_DECL(callee);
+	bool only_init_callers = true;
+
+	if (NODE_SYMBOL(callee)->aux)
+		return false;
+	if (get_init_exit_section(callee_decl) != NONE)
+		return false;
+
+	if (!in_lto_p && TREE_PUBLIC(callee_decl))
+		return false;
+
+	if (NODE_SYMBOL(callee)->address_taken)
+		return false;
+
+	e = callee->callers;
+	if (!e)
+		return false;
+
+	for (; e; e = e->next_caller) {
+		struct cgraph_node *caller = e->caller;
+
+		if (get_init_exit_section(NODE_DECL(caller)) == NONE && !NODE_SYMBOL(caller)->aux)
+			only_init_callers = false;
+	}
+
+	return only_init_callers;
+}
+
+static bool search_init_callers(void)
+{
+	struct cgraph_node *node;
+	bool change = false;
+
+	FOR_EACH_FUNCTION(node) {
+		struct cgraph_edge *e;
+		const_tree cur_fndecl = NODE_DECL(node);
+
+		if (DECL_ARTIFICIAL(cur_fndecl))
+			continue;
+		if (DECL_BUILT_IN(cur_fndecl))
+			continue;
+
+		if (get_init_exit_section(cur_fndecl) == NONE)
+			continue;
+
+		for (e = node->callees; e; e = e->next_callee) {
+			if (should_init(e->callee)) {
+				change = true;
+				NODE_SYMBOL(e->callee)->aux = (void *)1;
+			}
+		}
+	}
+	return change;
+}
+
+static unsigned int search_init_functions_execute(void)
+{
+	struct cgraph_node *node;
+
+	if (flag_lto && !in_lto_p)
+		return 0;
+
+	FOR_EACH_FUNCTION(node)
+		NODE_SYMBOL(node)->aux = NULL;
+
+	while (search_init_callers()) {};
+
+	FOR_EACH_FUNCTION(node) {
+		const_tree fndecl = NODE_DECL(node);
+
+		if (NODE_SYMBOL(node)->aux)
+			inform(DECL_SOURCE_LOCATION(fndecl), "__init or __exit is missing from the %qE function", fndecl);
+		NODE_SYMBOL(node)->aux = NULL;
+	}
+
+	return 0;
+}
+
+#define PASS_NAME search_init_functions
+#define NO_GENERATE_SUMMARY
+#define NO_READ_SUMMARY
+#define NO_WRITE_SUMMARY
+#define NO_READ_OPTIMIZATION_SUMMARY
+#define NO_WRITE_OPTIMIZATION_SUMMARY
+#define NO_STMT_FIXUP
+#define NO_FUNCTION_TRANSFORM
+#define NO_VARIABLE_TRANSFORM
+
+#include "gcc-generate-ipa-pass.h"
 
 static unsigned int (*old_section_type_flags)(tree decl, const char *name, int reloc);
 
@@ -730,7 +828,7 @@ static void initify_start_unit(void __unused *gcc_data, void __unused *user_data
 
 int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version *version)
 {
-	struct register_pass_info initify_pass_info;
+	struct register_pass_info initify_pass_info, search_init_functions_info;
 	int i;
 	const int argc = plugin_info->argc;
 	bool enabled = true;
@@ -740,7 +838,12 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 	initify_pass_info.pass				= make_initify_pass();
 	initify_pass_info.reference_pass_name		= "nrv";
 	initify_pass_info.ref_pass_instance_number	= 1;
-	initify_pass_info.pos_op				= PASS_POS_INSERT_AFTER;
+	initify_pass_info.pos_op			= PASS_POS_INSERT_AFTER;
+
+	search_init_functions_info.pass				= make_search_init_functions_pass();
+	search_init_functions_info.reference_pass_name		= "inline";
+	search_init_functions_info.ref_pass_instance_number	= 1;
+	search_init_functions_info.pos_op			= PASS_POS_INSERT_BEFORE;
 
 	if (!plugin_default_version_check(version, &gcc_version)) {
 		error(G_("incompatible gcc/plugin versions"));
@@ -756,16 +859,22 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 			verbose = true;
 			continue;
 		}
-		if (!strcmp(argv[i].key, "print_missing")) {
-			print_missing = true;
+		if (!strcmp(argv[i].key, "print_missing_attr")) {
+			print_missing_attr = true;
 			continue;
 		}
+		if (!strcmp(argv[i].key, "print_missing_init")) {
+			print_missing_init = true;
+			continue;
+		}
+
 		error(G_("unkown option '-fplugin-arg-%s-%s'"), plugin_name, argv[i].key);
 	}
 
 	register_callback(plugin_name, PLUGIN_INFO, NULL, &initify_plugin_info);
 	if (enabled) {
 		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &initify_pass_info);
+		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &search_init_functions_info);
 		register_callback(plugin_name, PLUGIN_START_UNIT, initify_start_unit, NULL);
 	}
 	register_callback(plugin_name, PLUGIN_ATTRIBUTES, register_attributes, NULL);
