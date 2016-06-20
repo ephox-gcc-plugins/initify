@@ -9,6 +9,9 @@
  * only referenced in __init/__exit functions to __initconst/__exitconst sections.
  * Based on an idea from Mathias Krause <minipli@ld-linux.so>.
  *
+ * The instrumentation pass of the latent_entropy plugin must run after the initify plugin
+ * to increase coverage.
+ *
  * Options:
  * -fplugin-arg-initify_plugin-disable
  * -fplugin-arg-initify_plugin-verbose
@@ -31,8 +34,11 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	= "20160527",
-	.help		= "initify_plugin\n",
+	.version	=	"20160527",
+	.help		=	"disable\tturn off the initify plugin\n"
+				 "verbose\tprint all initified strings and all functions which should be __init/__exit\n"
+				 "print_missing_attr\tprint functions which can be marked by nocapture attribute\n"
+				 "search_init_exit_functions\tsearch function which should be marked by __init or __exit attribute\n"
 };
 
 #define ARGNUM_NONE 0
@@ -143,6 +149,7 @@ static void register_attributes(void __unused *event_data, void __unused *data)
 	register_attribute(&nocapture_attr);
 }
 
+/* Determine whether the function is in the init or exit sections. */
 static enum section_type get_init_exit_section(const_tree decl)
 {
 	const_tree section;
@@ -206,6 +213,7 @@ static bool set_init_exit_section(tree decl)
 	return true;
 }
 
+/* Syscalls are always nocapture functions. */
 static bool is_syscall(const_tree fn)
 {
 	if (!strncmp(DECL_NAME_POINTER(fn), "sys_", 4))
@@ -359,6 +367,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		fndecl = gimple_call_fndecl(stmt);
 		gcc_assert(fndecl != NULL_TREE);
 
+		/* These are potentially nocapture functions that must be checked manually. */
 		if (print_missing_attr)
 			inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
 		return true;
@@ -408,6 +417,7 @@ static bool has_capture_use_local_var(const_tree vardecl)
 	return false;
 }
 
+/* Search local variables that have only nocapture uses. */
 static void find_local_str(void)
 {
 	unsigned int i __unused;
@@ -605,6 +615,7 @@ static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int fi
 	}
 }
 
+/* Search constant strings assigned to variables. */
 static void search_var_param(gcall *stmt)
 {
 	unsigned int num;
@@ -632,6 +643,7 @@ static void search_var_param(gcall *stmt)
 	}
 }
 
+/* Search constant strings passed as arguments. */
 static void search_str_param(gcall *stmt)
 {
 	unsigned int num;
@@ -662,6 +674,7 @@ static bool has_nocapture_param(const gcall *stmt)
 	return attr != NULL_TREE;
 }
 
+/* Search constant strings in arguments of nocapture functions. */
 static void search_const_strs(void)
 {
 	basic_block bb;
@@ -685,6 +698,7 @@ static void search_const_strs(void)
 	}
 }
 
+/* Find and move constant strings to the proper init or exit read-only data section. */
 static unsigned int initify_execute(void)
 {
 	if (get_init_exit_section(current_function_decl) == NONE)
@@ -707,6 +721,7 @@ static bool search_init_functions_gate(void)
 	return print_missing_init;
 }
 
+/* If the function is called by only __init/__exit functions then it can become an __init/__exit function as well. */
 static bool should_init(struct cgraph_node *callee)
 {
 	struct cgraph_edge *e;
@@ -718,6 +733,7 @@ static bool should_init(struct cgraph_node *callee)
 	if (get_init_exit_section(callee_decl) != NONE)
 		return false;
 
+	/* If gcc isn't in LTO mode then we can handle only static functions. */
 	if (!in_lto_p && TREE_PUBLIC(callee_decl))
 		return false;
 
@@ -738,6 +754,7 @@ static bool should_init(struct cgraph_node *callee)
 	return only_init_callers;
 }
 
+/* Try to propagate __init/__exit to callees in __init/__exit functions. If a function is called by __init and __exit functions as well then it can be an __exit function at most. */
 static bool search_init_callers(void)
 {
 	struct cgraph_node *node;
@@ -768,6 +785,7 @@ static bool search_init_callers(void)
 	return change;
 }
 
+/* We can't move functions to the init/exit sections from certain sections. */
 static bool can_move_to_init_exit(const_tree fndecl)
 {
 	const char *section_name;
@@ -801,6 +819,7 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	if (verbose)
 		inform(DECL_SOURCE_LOCATION(fndecl), "%s is missing from the %qE function", section_name, fndecl);
 
+	/* Add the init/exit section attribute to the function declaration. */
 	DECL_ATTRIBUTES(fndecl) = copy_list(DECL_ATTRIBUTES(fndecl));
 
 	section_str = build_string(strlen(section_name) + 1, section_name);
@@ -812,6 +831,7 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	DECL_SECTION_NAME(fndecl) = section_str;
 }
 
+/* Find all functions that can become __init/__exit functions */
 static unsigned int search_init_functions_execute(void)
 {
 	struct cgraph_node *node;
