@@ -725,8 +725,8 @@ static bool search_init_functions_gate(void)
 static bool should_init_exit(struct cgraph_node *callee)
 {
 	struct cgraph_edge *e;
+	bool only_init_callers;
 	const_tree callee_decl = NODE_DECL(callee);
-	bool only_init_callers = true;
 
 	if (NODE_SYMBOL(callee)->aux != (void *)NONE)
 		return false;
@@ -744,6 +744,7 @@ static bool should_init_exit(struct cgraph_node *callee)
 	if (!e)
 		return false;
 
+	only_init_callers = true;
 	for (; e; e = e->next_caller) {
 		struct cgraph_node *caller = e->caller;
 
@@ -775,7 +776,13 @@ static bool search_init_exit_callers(void)
 			continue;
 
 		for (e = node->callees; e; e = e->next_callee) {
-			if (!should_init(e->callee))
+			if (section == EXIT && e->callee->aux == (void *)INIT) {
+				NODE_SYMBOL(e->callee)->aux = (void *)EXIT;
+				change = true;
+				continue;
+			}
+
+			if (!should_init_exit(e->callee))
 				continue;
 			change = true;
 			gcc_assert(NODE_SYMBOL(e->callee)->aux == (void *)NONE);
@@ -811,6 +818,9 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	const char *section_name;
 	tree section_str, attr_args, fndecl = NODE_DECL(node);
 
+	if (NODE_SYMBOL(node)->aux == (void *)NONE)
+		return;
+
 	if (!can_move_to_init_exit(fndecl))
 		return;
 
@@ -845,8 +855,7 @@ static unsigned int search_init_functions_execute(void)
 	while (search_init_exit_callers()) {};
 
 	FOR_EACH_FUNCTION(node) {
-		if (NODE_SYMBOL(node)->aux != (void *)NONE)
-			move_function_to_init_exit_text(node);
+		move_function_to_init_exit_text(node);
 
 		NODE_SYMBOL(node)->aux = NULL;
 	}
