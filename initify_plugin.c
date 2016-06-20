@@ -809,6 +809,7 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	attr_args = build_tree_list(NULL_TREE, section_str);
 
 	DECL_ATTRIBUTES(fndecl) = tree_cons(get_identifier("__section__"), attr_args, DECL_ATTRIBUTES(fndecl));
+	DECL_SECTION_NAME(fndecl) = section_str;
 }
 
 static unsigned int search_init_functions_execute(void)
