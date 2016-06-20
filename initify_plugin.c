@@ -768,10 +768,33 @@ static bool search_init_callers(void)
 	return change;
 }
 
+static bool can_move_to_init_exit(const_tree fndecl)
+{
+	const char *section_name;
+	const_tree section_tree = DECL_SECTION_NAME(fndecl);
+
+	if (section_tree == NULL_TREE)
+		return true;
+
+	section_name = TREE_STRING_POINTER(section_tree);
+
+	if (!strcmp(section_name, ".ref.text\000"))
+		return true;
+
+	if (!strcmp(section_name, ".meminit.text\000"))
+		return false;
+
+	debug_tree(DECL_SECTION_NAME(fndecl));
+	gcc_unreachable();
+}
+
 static void move_function_to_init_exit_text(struct cgraph_node *node)
 {
 	const char *section_name;
 	tree section_str, attr_args, fndecl = NODE_DECL(node);
+
+	if (!can_move_to_init_exit(fndecl))
+		return;
 
 	section_name = NODE_SYMBOL(node)->aux == (void *)INIT ? ".init.text" : ".exit.text";
 
