@@ -16,7 +16,7 @@
  * -fplugin-arg-initify_plugin-disable
  * -fplugin-arg-initify_plugin-verbose
  * -fplugin-arg-initify_plugin-print_missing_attr
- * -fplugin-arg-initify_plugin-print_missing_init
+ * -fplugin-arg-initify_plugin-search_init_exit_functions
  *
  * Attribute: __attribute__((nocapture(x, y ...)))
  *  The nocapture gcc attribute can be on functions only.
@@ -42,7 +42,7 @@ static struct plugin_info initify_plugin_info = {
 };
 
 #define ARGNUM_NONE 0
-static bool verbose, print_missing_attr, print_missing_init;
+static bool verbose, print_missing_attr, search_init_exit_functions;
 
 enum section_type {
 	INIT, EXIT, NONE
@@ -718,11 +718,11 @@ static unsigned int initify_execute(void)
 
 static bool search_init_functions_gate(void)
 {
-	return print_missing_init;
+	return search_init_exit_functions;
 }
 
 /* If the function is called by only __init/__exit functions then it can become an __init/__exit function as well. */
-static bool should_init(struct cgraph_node *callee)
+static bool should_init_exit(struct cgraph_node *callee)
 {
 	struct cgraph_edge *e;
 	const_tree callee_decl = NODE_DECL(callee);
@@ -755,7 +755,7 @@ static bool should_init(struct cgraph_node *callee)
 }
 
 /* Try to propagate __init/__exit to callees in __init/__exit functions. If a function is called by __init and __exit functions as well then it can be an __exit function at most. */
-static bool search_init_callers(void)
+static bool search_init_exit_callers(void)
 {
 	struct cgraph_node *node;
 	bool change = false;
@@ -842,7 +842,7 @@ static unsigned int search_init_functions_execute(void)
 	FOR_EACH_FUNCTION(node)
 		NODE_SYMBOL(node)->aux = (void *)NONE;
 
-	while (search_init_callers()) {};
+	while (search_init_exit_callers()) {};
 
 	FOR_EACH_FUNCTION(node) {
 		if (NODE_SYMBOL(node)->aux != (void *)NONE)
@@ -924,8 +924,8 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 			print_missing_attr = true;
 			continue;
 		}
-		if (!strcmp(argv[i].key, "print_missing_init")) {
-			print_missing_init = true;
+		if (!strcmp(argv[i].key, "search_init_exit_functions")) {
+			search_init_exit_functions = true;
 			continue;
 		}
 
