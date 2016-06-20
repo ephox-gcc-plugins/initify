@@ -5,8 +5,11 @@
  * Homepage:
  * https://github.com/ephox-gcc-plugins/initify
  *
- * Move string constants (local variables and function string arguments marked by the nocapture attribute)
- * only referenced in __init/__exit functions to __initconst/__exitconst sections.
+ * This plugin has two passes. The first one tries to find all functions that
+ * can be become __init/__exit. The second one moves string constants
+ * (local variables and function string arguments marked by
+ * the nocapture attribute) only referenced in __init/__exit functions
+ * to __initconst/__exitconst sections.
  * Based on an idea from Mathias Krause <minipli@ld-linux.so>.
  *
  * The instrumentation pass of the latent_entropy plugin must run after the initify plugin
