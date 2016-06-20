@@ -344,7 +344,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 
 	for (i = 0; i < gimple_num_ops(stmt); i++) {
 		unsigned int arg_count;
-		const_tree fndecl;
+		const_tree fndecl, arg;
 		tree op = *(gimple_op_ptr(stmt, i));
 
 		if (op == NULL_TREE)
@@ -361,6 +361,10 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		/* return, fndecl */
 		gcc_assert(i >= 3);
 		arg_count = i - 2;
+
+		arg = gimple_call_arg(stmt, arg_count - 1);
+		gcc_assert(TREE_CODE(TREE_TYPE(arg)) == POINTER_TYPE);
+
 		if (is_nocapture_param(as_a_const_gcall(stmt), (int)arg_count))
 			continue;
 
