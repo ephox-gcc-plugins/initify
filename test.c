@@ -1,5 +1,6 @@
 /* result:
 
+initified local var: _1_YES_print_exit: _1_YES_print_exit
 initified local var: _1_YES_print_init: _1_YES_print_init
 initified function arg: _1_YES_print_init: ["2. YES %s"]
 initified function arg: _1_YES_print_init: ["3. YES\012"]
@@ -25,8 +26,14 @@ initified function arg: _1_YES_print_init: ["22. YES"]
 initified function arg: _1_YES_print_init: ["23. YES"]
 initified local var, phi arg: _1_YES_print_init: ["24. YES"]
 initified local var, phi arg: _1_YES_print_init: ["25. YES"]
+initified local var, phi arg: _1_YES_print_exit: ["26. YES"]
 
 objdump -s -j .init.rodata.str test
+objdump -s -j .exit.rodata.str test
+
+initified function arg: print_simple_should_init.isra.0.constprop: ["SHOULD_INIT"]
+
+__init attribute is missing from the 'print_simple_should_init.isra' function
 */
 
 #include <stdio.h>
@@ -126,7 +133,7 @@ static int __printf(1, 3) print_simple_should_init(const char *format, const cha
 
 void __exit _1_YES_print_exit(const char *str)
 {
-	print_simple_4(__func__);
+	print_simple_4(str?__func__:"26. YES");
 }
 
 void __init _1_YES_print_init(const char *str)

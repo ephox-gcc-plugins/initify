@@ -569,10 +569,9 @@ static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, u
 	for (i = 0; i < gimple_phi_num_args(stmt); i++) {
 		tree arg = gimple_phi_arg_def(stmt, i);
 
-		if (get_string_cst(arg) == NULL_TREE) {
+		if (get_string_cst(arg) == NULL_TREE)
 			walk_def_stmt(visited, prev_stmt, first_stmt_call_num, arg);
-			return;
-		} else
+		else
 			initify_create_new_phi_arg(ssa_var, stmt, i);
 	}
 
