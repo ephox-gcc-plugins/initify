@@ -884,6 +884,9 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 			inform(DECL_SOURCE_LOCATION(fndecl), "%s attribute is missing from the %qE function", attr_name, fndecl);
 	}
 
+	if (in_lto_p)
+		return;
+
 	/* Add the init/exit section attribute to the function declaration. */
 	DECL_ATTRIBUTES(fndecl) = copy_list(DECL_ATTRIBUTES(fndecl));
 
