@@ -82,7 +82,7 @@ static inline void pointer_set_destroy(gimple_set *visited)
 typedef struct pointer_set_t gimple_set;
 #endif
 
-static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int first_stmt_call_num, tree node);
+static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
 
 /* nocapture attribute:
  *  * to mark nocapture function arguments. If used on a vararg argument
@@ -561,7 +561,7 @@ static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i)
 		inform(gimple_location(stmt), "initified local var, phi arg: %E: [%E]", current_function_decl, get_string_cst(arg));
 }
 
-static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, unsigned int first_stmt_call_num)
+static void set_section_phi(bool *has_str_cst, gimple_set *visited, gphi *stmt)
 {
 	tree result, ssa_var;
 	unsigned int i;
@@ -573,36 +573,30 @@ static void set_section_phi(gimple_set *visited, gimple prev_stmt, gphi *stmt, u
 		tree arg = gimple_phi_arg_def(stmt, i);
 
 		if (get_string_cst(arg) == NULL_TREE)
-			walk_def_stmt(visited, prev_stmt, first_stmt_call_num, arg);
+			walk_def_stmt(has_str_cst, visited, arg);
 		else
 			initify_create_new_phi_arg(ssa_var, stmt, i);
 	}
-
-	switch (gimple_code(prev_stmt)) {
-	case GIMPLE_ASSIGN:
-		gcc_assert(gimple_num_ops(prev_stmt) == 2);
-		gimple_assign_set_rhs1(prev_stmt, ssa_var);
-		break;
-
-	case GIMPLE_CALL:
-		gimple_call_set_arg(prev_stmt, first_stmt_call_num, ssa_var);
-		break;
-
-	default:
-		debug_gimple_stmt(prev_stmt);
-		error("%s: unknown gimple code", __func__);
-		gcc_unreachable();
-	}
-
-	update_stmt(prev_stmt);
 }
 
-static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int first_stmt_call_num, tree node)
+static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node)
 {
 	gimple def_stmt;
+	const_tree parm_decl;
 
-	if (TREE_CODE(node) != SSA_NAME)
+	if (!*has_str_cst)
 		return;
+
+	if (TREE_CODE(node) != SSA_NAME) {
+		*has_str_cst = false;
+		return;
+	}
+
+	parm_decl = SSA_NAME_VAR(node);
+	if (parm_decl != NULL_TREE && TREE_CODE(parm_decl) == PARM_DECL) {
+		*has_str_cst = false;
+		return;
+	}
 
 	def_stmt = SSA_NAME_DEF_STMT(node);
 	if (pointer_set_insert(visited, def_stmt))
@@ -612,24 +606,28 @@ static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int fi
 	case GIMPLE_NOP:
 	case GIMPLE_CALL:
 	case GIMPLE_ASM:
-		break;
+	case GIMPLE_RETURN:
+		*has_str_cst = false;
+		return;
 
 	case GIMPLE_PHI:
-		set_section_phi(visited, prev_stmt, as_a_gphi(def_stmt), first_stmt_call_num);
-		break;
+		set_section_phi(has_str_cst, visited, as_a_gphi(def_stmt));
+		return;
 
 	case GIMPLE_ASSIGN: {
 		tree rhs1, str;
 
 		if (gimple_num_ops(def_stmt) != 2)
-			break;
+			return;
 
 		rhs1 = gimple_assign_rhs1(def_stmt);
+		walk_def_stmt(has_str_cst, visited, rhs1);
+		if (!*has_str_cst)
+			return;
 		str = get_string_cst(rhs1);
 		if (str != NULL_TREE)
 			set_section_call_assign(def_stmt, rhs1, 0);
-		walk_def_stmt(visited, def_stmt, 0, rhs1);
-		break;
+		return;
 	}
 
 	default:
@@ -647,6 +645,7 @@ static void search_var_param(gcall *stmt)
 	for (num = 0; num < gimple_call_num_args(stmt); num++) {
 		gimple_set *visited;
 		const_tree type;
+		bool has_str_cst = true;
 		tree str, arg = gimple_call_arg(stmt, num);
 
 		str = get_string_cst(arg);
@@ -662,7 +661,7 @@ static void search_var_param(gcall *stmt)
 			continue;
 
 		visited = pointer_set_create();
-		walk_def_stmt(visited, stmt, num, arg);
+		walk_def_stmt(&has_str_cst, visited, arg);
 		pointer_set_destroy(visited);
 	}
 }
