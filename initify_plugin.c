@@ -837,12 +837,19 @@ static bool search_init_exit_callers(void)
 static bool can_move_to_init_exit(const_tree fndecl)
 {
 	const char *section_name;
+
+#if BUILDING_GCC_VERSION < 5000
 	const_tree section_tree = DECL_SECTION_NAME(fndecl);
 
 	if (section_tree == NULL_TREE)
 		return true;
 
 	section_name = TREE_STRING_POINTER(section_tree);
+#else
+	section_name = DECL_SECTION_NAME(fndecl);
+	if (!section_name)
+		return true;
+#endif
 
 	if (!strcmp(section_name, ".ref.text\000"))
 		return true;
@@ -850,7 +857,7 @@ static bool can_move_to_init_exit(const_tree fndecl)
 	if (!strcmp(section_name, ".meminit.text\000"))
 		return false;
 
-	debug_tree(DECL_SECTION_NAME(fndecl));
+	inform(DECL_SOURCE_LOCATION(fndecl), "Section of %qE: %s\n", fndecl, section_name);
 	gcc_unreachable();
 }
 
@@ -885,7 +892,11 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	id = get_identifier("__section__");
 	attr = DECL_ATTRIBUTES(fndecl);
 	DECL_ATTRIBUTES(fndecl) = tree_cons(id, attr_args, attr);
+
+#if BUILDING_GCC_VERSION < 5000
 	DECL_SECTION_NAME(fndecl) = section_str;
+#endif
+	set_decl_section_name(fndecl, section_name);
 }
 
 /* Find all functions that can become __init/__exit functions */
