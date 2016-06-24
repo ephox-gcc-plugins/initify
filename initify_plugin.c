@@ -827,6 +827,8 @@ static bool search_init_exit_callers(void)
 			continue;
 
 		for (e = node->callees; e; e = e->next_callee) {
+			if (e->callee->global.inlined_to)
+				continue;
 			if (inherit_section(e->callee, node, section))
 				change = true;
 		}
@@ -972,7 +974,7 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 	search_init_functions_info.pass				= make_search_init_functions_pass();
 	search_init_functions_info.reference_pass_name		= "inline";
 	search_init_functions_info.ref_pass_instance_number	= 1;
-	search_init_functions_info.pos_op			= PASS_POS_INSERT_BEFORE;
+	search_init_functions_info.pos_op			= PASS_POS_INSERT_AFTER;
 
 	if (!plugin_default_version_check(version, &gcc_version)) {
 		error(G_("incompatible gcc/plugin versions"));
