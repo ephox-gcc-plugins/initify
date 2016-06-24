@@ -762,9 +762,12 @@ static bool should_init_exit(struct cgraph_node *callee)
 	return only_init_callers;
 }
 
-static bool inherit_section(struct cgraph_node *callee, enum section_type curfn_section)
+static bool inherit_section(struct cgraph_node *callee, struct cgraph_node *caller, enum section_type curfn_section)
 {
-	if (curfn_section == EXIT && callee->aux == (void *)INIT)
+	if (curfn_section == NONE)
+		curfn_section = (enum section_type)(unsigned long)NODE_SYMBOL(caller)->aux;
+
+	if (curfn_section == EXIT && NODE_SYMBOL(callee)->aux == (void *)INIT)
 		goto set_section;
 
 	if (!should_init_exit(callee))
@@ -792,11 +795,11 @@ static bool search_init_exit_callers(void)
 			continue;
 
 		section = get_init_exit_section(cur_fndecl);
-		if (section == NONE)
+		if (section == NONE && NODE_SYMBOL(node)->aux == (void *)NONE)
 			continue;
 
 		for (e = node->callees; e; e = e->next_callee) {
-			if (inherit_section(e->callee, section))
+			if (inherit_section(e->callee, node, section))
 				change = true;
 		}
 	}
