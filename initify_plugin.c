@@ -762,6 +762,21 @@ static bool should_init_exit(struct cgraph_node *callee)
 	return only_init_callers;
 }
 
+static bool inherit_section(struct cgraph_node *callee, enum section_type curfn_section)
+{
+	if (curfn_section == EXIT && callee->aux == (void *)INIT)
+		goto set_section;
+
+	if (!should_init_exit(callee))
+		return false;
+
+	gcc_assert(NODE_SYMBOL(callee)->aux == (void *)NONE);
+
+set_section:
+	NODE_SYMBOL(callee)->aux = (void *)curfn_section;
+	return true;
+}
+
 /* Try to propagate __init/__exit to callees in __init/__exit functions. If a function is called by __init and __exit functions as well then it can be an __exit function at most. */
 static bool search_init_exit_callers(void)
 {
@@ -783,17 +798,8 @@ static bool search_init_exit_callers(void)
 			continue;
 
 		for (e = node->callees; e; e = e->next_callee) {
-			if (section == EXIT && e->callee->aux == (void *)INIT) {
-				NODE_SYMBOL(e->callee)->aux = (void *)EXIT;
+			if (inherit_section(e->callee, section))
 				change = true;
-				continue;
-			}
-
-			if (!should_init_exit(e->callee))
-				continue;
-			change = true;
-			gcc_assert(NODE_SYMBOL(e->callee)->aux == (void *)NONE);
-			NODE_SYMBOL(e->callee)->aux = (void *)section;
 		}
 	}
 	return change;
