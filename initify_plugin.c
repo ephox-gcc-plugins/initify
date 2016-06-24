@@ -12,8 +12,8 @@
  * to __initconst/__exitconst sections.
  * Based on an idea from Mathias Krause <minipli@ld-linux.so>.
  *
- * The instrumentation pass of the latent_entropy plugin must run after the initify plugin
- * to increase coverage.
+ * The instrumentation pass of the latent_entropy plugin must run after
+ * the initify plugin to increase coverage.
  *
  * Options:
  * -fplugin-arg-initify_plugin-disable
@@ -25,7 +25,8 @@
  *  The nocapture gcc attribute can be on functions only.
  *  The attribute takes one or more unsigned integer constants as parameters
  *  that specify the function argument(s) of const char* type to initify.
- *  If the marked argument is a vararg then the plugin initifies all vararg arguments.
+ *  If the marked argument is a vararg then the plugin initifies
+ *  all vararg arguments.
  *
  * Usage:
  * $ make
@@ -39,9 +40,13 @@ int plugin_is_GPL_compatible;
 static struct plugin_info initify_plugin_info = {
 	.version	=	"20160527",
 	.help		=	"disable\tturn off the initify plugin\n"
-				 "verbose\tprint all initified strings and all functions which should be __init/__exit\n"
-				 "print_missing_attr\tprint functions which can be marked by nocapture attribute\n"
-				 "search_init_exit_functions\tsearch function which should be marked by __init or __exit attribute\n"
+				 "verbose\tprint all initified strings and all"
+				 " functions which should be __init/__exit\n"
+				 "print_missing_attr\tprint functions which"
+				 " can be marked by nocapture attribute\n"
+				 "search_init_exit_functions\tsearch function"
+				 " which should be marked by __init or __exit"
+				 " attribute\n"
 };
 
 #define ARGNUM_NONE 0
@@ -80,8 +85,8 @@ typedef struct pointer_set_t gimple_set;
 static void walk_def_stmt(gimple_set *visited, gimple prev_stmt, unsigned int first_stmt_call_num, tree node);
 
 /* nocapture attribute:
- *  * to mark nocapture function arguments. If used on a vararg argument it applies to all of them
- *    that have no other uses.
+ *  * to mark nocapture function arguments. If used on a vararg argument
+ *    it applies to all of them that have no other uses.
  *  * attribute value 0 is ignored to allow reusing print attribute arguments
  */
 static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args, int __unused flags, bool *no_add_attrs)
@@ -96,11 +101,13 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		break;
 
 	case TYPE_DECL: {
+		enum tree_code fn_code;
 		const_tree fntype = TREE_TYPE(*node);
 
-		if (TREE_CODE(fntype) == POINTER_TYPE)
+		fn_code = TREE_CODE(fntype);
+		if (fn_code == POINTER_TYPE)
 			fntype = TREE_TYPE(fntype);
-		if (TREE_CODE(fntype) == FUNCTION_TYPE || TREE_CODE(fntype) == METHOD_TYPE)
+		if (fn_code == FUNCTION_TYPE || fn_code == METHOD_TYPE)
 			break;
 		/* FALLTHROUGH */
 	}
@@ -199,6 +206,7 @@ static tree get_string_cst(tree var)
 	default:
 		break;
 	}
+
 	return NULL_TREE;
 }
 
@@ -374,7 +382,10 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		fndecl = gimple_call_fndecl(stmt);
 		gcc_assert(fndecl != NULL_TREE);
 
-		/* These are potentially nocapture functions that must be checked manually. */
+		/*
+		 * These are potentially nocapture functions that must be checked
+		 *  manually.
+		 */
 		if (print_missing_attr)
 			inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
 		return true;
@@ -455,12 +466,15 @@ static void find_local_str(void)
 
 static tree create_decl(tree node)
 {
-	tree str, decl;
+	tree str, decl, type, name;
+	location_t loc = DECL_SOURCE_LOCATION(current_function_decl);
 
 	str = get_string_cst(node);
-	gcc_assert(TREE_CODE(TREE_TYPE(str)) == ARRAY_TYPE);
-	gcc_assert(TREE_TYPE(TREE_TYPE(str)) != NULL_TREE && TREE_CODE(TREE_TYPE(TREE_TYPE(str))) == INTEGER_TYPE);
-	decl = build_decl(DECL_SOURCE_LOCATION(current_function_decl), VAR_DECL, create_tmp_var_name("initify"), TREE_TYPE(str));
+	type = TREE_TYPE(str);
+	gcc_assert(TREE_CODE(type) == ARRAY_TYPE);
+	gcc_assert(TREE_TYPE(type) != NULL_TREE && TREE_CODE(TREE_TYPE(type)) == INTEGER_TYPE);
+	name = create_tmp_var_name("initify");
+	decl = build_decl(loc, VAR_DECL, name, type);
 
 	DECL_INITIAL(decl) = str;
 	DECL_CONTEXT(decl) = current_function_decl;
@@ -480,7 +494,8 @@ static tree create_decl(tree node)
 
 	DECL_CHAIN(decl) = BLOCK_VARS(DECL_INITIAL(current_function_decl));
 	BLOCK_VARS(DECL_INITIAL(current_function_decl)) = decl;
-	return build_fold_addr_expr_loc(DECL_SOURCE_LOCATION(current_function_decl), decl);
+
+	return build_fold_addr_expr_loc(loc, decl);
 }
 
 static void set_section_call_assign(gimple stmt, tree node, unsigned int num)
@@ -719,7 +734,10 @@ static unsigned int initify_execute(void)
 
 #define PASS_NAME initify
 #define NO_GATE
-#define TODO_FLAGS_FINISH TODO_dump_func | TODO_verify_ssa | TODO_verify_stmts | TODO_remove_unused_locals | TODO_cleanup_cfg | TODO_ggc_collect | TODO_verify_flow | TODO_update_ssa
+#define TODO_FLAGS_FINISH	TODO_dump_func | TODO_verify_ssa | \
+				TODO_verify_stmts | TODO_remove_unused_locals | \
+				TODO_cleanup_cfg | TODO_ggc_collect | \
+				TODO_verify_flow | TODO_update_ssa
 
 #include "gcc-generate-gimple-pass.h"
 
@@ -728,7 +746,10 @@ static bool search_init_functions_gate(void)
 	return search_init_exit_functions;
 }
 
-/* If the function is called by only __init/__exit functions then it can become an __init/__exit function as well. */
+/*
+ * If the function is called by only __init/__exit functions then it can become
+ * an __init/__exit function as well.
+ */
 static bool should_init_exit(struct cgraph_node *callee)
 {
 	struct cgraph_edge *e;
@@ -753,9 +774,11 @@ static bool should_init_exit(struct cgraph_node *callee)
 
 	only_init_callers = true;
 	for (; e; e = e->next_caller) {
+		enum section_type caller_section;
 		struct cgraph_node *caller = e->caller;
 
-		if (get_init_exit_section(NODE_DECL(caller)) == NONE && NODE_SYMBOL(caller)->aux == (void *)NONE)
+		caller_section = get_init_exit_section(NODE_DECL(caller));
+		if (caller_section == NONE && NODE_SYMBOL(caller)->aux == (void *)NONE)
 			only_init_callers = false;
 	}
 
@@ -780,7 +803,11 @@ set_section:
 	return true;
 }
 
-/* Try to propagate __init/__exit to callees in __init/__exit functions. If a function is called by __init and __exit functions as well then it can be an __exit function at most. */
+/*
+ * Try to propagate __init/__exit to callees in __init/__exit functions.
+ * If a function is called by __init and __exit functions as well then it can be
+ * an __exit function at most.
+ */
 static bool search_init_exit_callers(void)
 {
 	struct cgraph_node *node;
@@ -830,6 +857,7 @@ static bool can_move_to_init_exit(const_tree fndecl)
 static void move_function_to_init_exit_text(struct cgraph_node *node)
 {
 	const char *section_name;
+	tree id, attr;
 	tree section_str, attr_args, fndecl = NODE_DECL(node);
 
 	if (NODE_SYMBOL(node)->aux == (void *)NONE)
@@ -837,8 +865,6 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 
 	if (!can_move_to_init_exit(fndecl))
 		return;
-
-	section_name = NODE_SYMBOL(node)->aux == (void *)INIT ? ".init.text" : ".exit.text";
 
 	if (verbose) {
 		const char *attr_name;
@@ -850,12 +876,15 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	/* Add the init/exit section attribute to the function declaration. */
 	DECL_ATTRIBUTES(fndecl) = copy_list(DECL_ATTRIBUTES(fndecl));
 
+	section_name = NODE_SYMBOL(node)->aux == (void *)INIT ? ".init.text" : ".exit.text";
 	section_str = build_string(strlen(section_name) + 1, section_name);
 	TREE_READONLY(section_str) = 1;
 	TREE_STATIC(section_str) = 1;
 	attr_args = build_tree_list(NULL_TREE, section_str);
 
-	DECL_ATTRIBUTES(fndecl) = tree_cons(get_identifier("__section__"), attr_args, DECL_ATTRIBUTES(fndecl));
+	id = get_identifier("__section__");
+	attr = DECL_ATTRIBUTES(fndecl);
+	DECL_ATTRIBUTES(fndecl) = tree_cons(id, attr_args, attr);
 	DECL_SECTION_NAME(fndecl) = section_str;
 }
 
