@@ -788,8 +788,6 @@ static bool search_init_exit_callers(void)
 		enum section_type section;
 		const_tree cur_fndecl = NODE_DECL(node);
 
-		if (DECL_ARTIFICIAL(cur_fndecl))
-			continue;
 		if (DECL_BUILT_IN(cur_fndecl))
 			continue;
 
