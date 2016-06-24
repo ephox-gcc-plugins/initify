@@ -837,8 +837,12 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 
 	section_name = NODE_SYMBOL(node)->aux == (void *)INIT ? ".init.text" : ".exit.text";
 
-	if (verbose)
-		inform(DECL_SOURCE_LOCATION(fndecl), "%s is missing from the %qE function", section_name, fndecl);
+	if (verbose) {
+		const char *attr_name;
+
+		attr_name = NODE_SYMBOL(node)->aux == (void *)INIT ? "__init" : "__exit";
+		inform(DECL_SOURCE_LOCATION(fndecl), "%s attribute is missing from the %qE function", attr_name, fndecl);
+	}
 
 	/* Add the init/exit section attribute to the function declaration. */
 	DECL_ATTRIBUTES(fndecl) = copy_list(DECL_ATTRIBUTES(fndecl));
