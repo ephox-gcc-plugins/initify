@@ -2,8 +2,6 @@
 
 initified local var: _1_YES_print_exit: _1_YES_print_exit
 initified local var: _1_YES_print_init: _1_YES_print_init
-	initified function arg: _1_YES_print_init: ["2. YES %s"] clone
-	initified function arg: _1_YES_print_init: ["3. YES\012"] clone
 initified function arg: _1_YES_print_init: ["4. YES %s %s %s"]
 initified function arg: _1_YES_print_init: ["5. YES"]
 initified function arg: _1_YES_print_init: ["6. YES"]

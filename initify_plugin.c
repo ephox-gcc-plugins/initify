@@ -49,6 +49,7 @@ static struct plugin_info initify_plugin_info = {
 				 " attribute\n"
 };
 
+static struct cgraph_2node_hook_list *node_duplication_hook_holder;
 #define ARGNUM_NONE 0
 static bool verbose, print_missing_attr, search_init_exit_functions;
 
@@ -240,15 +241,10 @@ static bool is_syscall(const_tree fn)
 	return false;
 }
 
-static bool is_nocapture_param(const gcall *stmt, int fn_arg_count)
+static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
 {
 	const_tree attr, attr_val;
 	int fntype_arg_len;
-	const_tree fndecl = gimple_call_fndecl(stmt);
-
-	/* TODO: clones */
-	if (DECL_ABSTRACT_ORIGIN(fndecl) != NULL_TREE)
-		return false;
 
 	if (is_syscall(fndecl))
 		return true;
@@ -379,10 +375,10 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		arg = gimple_call_arg(stmt, arg_count - 1);
 		gcc_assert(TREE_CODE(TREE_TYPE(arg)) == POINTER_TYPE);
 
-		if (is_nocapture_param(as_a_const_gcall(stmt), (int)arg_count))
+		fndecl = gimple_call_fndecl(stmt);
+		if (is_nocapture_param(fndecl, (int)arg_count))
 			continue;
 
-		fndecl = gimple_call_fndecl(stmt);
 		gcc_assert(fndecl != NULL_TREE);
 
 		/*
@@ -644,7 +640,7 @@ static void search_var_param(gcall *stmt)
 
 	for (num = 0; num < gimple_call_num_args(stmt); num++) {
 		gimple_set *visited;
-		const_tree type;
+		const_tree type, fndecl;
 		bool has_str_cst = true;
 		tree str, arg = gimple_call_arg(stmt, num);
 
@@ -657,7 +653,8 @@ static void search_var_param(gcall *stmt)
 		type = TREE_TYPE(TREE_TYPE(arg));
 		if (!TYPE_STRING_FLAG(type))
 			continue;
-		if (!is_nocapture_param(stmt, num + 1))
+		fndecl = gimple_call_fndecl(stmt);
+		if (!is_nocapture_param(fndecl, num + 1))
 			continue;
 
 		visited = pointer_set_create();
@@ -672,20 +669,22 @@ static void search_str_param(gcall *stmt)
 	unsigned int num;
 
 	for (num = 0; num < gimple_call_num_args(stmt); num++) {
+		const_tree fndecl;
 		tree str, arg = gimple_call_arg(stmt, num);
 
 		str = get_string_cst(arg);
 		if (str == NULL_TREE)
 			continue;
 
-		if (is_nocapture_param(stmt, num + 1))
+		fndecl = gimple_call_fndecl(stmt);
+		if (is_nocapture_param(fndecl, num + 1))
 			set_section_call_assign(stmt, arg, num);
 	}
 }
 
-static bool has_nocapture_param(const gcall *stmt)
+static bool has_nocapture_param(const_tree fndecl)
 {
-	const_tree attr, fndecl = gimple_call_fndecl(stmt);
+	const_tree attr;
 
 	if (fndecl == NULL_TREE)
 		return false;
@@ -713,7 +712,7 @@ static void search_const_strs(void)
 				continue;
 
 			call_stmt = as_a_gcall(stmt);
-			if (!has_nocapture_param(call_stmt))
+			if (!has_nocapture_param(gimple_call_fndecl(call_stmt)))
 				continue;
 			search_str_param(call_stmt);
 			search_var_param(call_stmt);
@@ -928,9 +927,89 @@ static unsigned int search_init_functions_execute(void)
 	return 0;
 }
 
+/* Find the specified argument in the clone */
+static unsigned int orig_argnum_on_clone(struct cgraph_node *new_node, unsigned int orig_argnum)
+{
+	bitmap args_to_skip;
+	unsigned int i, new_argnum = orig_argnum;
+
+	gcc_assert(new_node->clone_of && new_node->clone.tree_map);
+	args_to_skip = new_node->clone.args_to_skip;
+	if (bitmap_bit_p(args_to_skip, orig_argnum - 1))
+		return 0;
+
+	for (i = 0; i < orig_argnum; i++) {
+		if (bitmap_bit_p(args_to_skip, i))
+			new_argnum--;
+	}
+	return new_argnum + 1;
+}
+
+/* Determine if a cloned function has all the original arguments */
+static bool unchanged_arglist(struct cgraph_node *new_node, struct cgraph_node *old_node)
+{
+	const_tree new_decl_list, old_decl_list;
+
+	if (new_node->clone_of && new_node->clone.tree_map)
+		return !new_node->clone.args_to_skip;
+
+	new_decl_list = DECL_ARGUMENTS(NODE_DECL(new_node));
+	old_decl_list = DECL_ARGUMENTS(NODE_DECL(old_node));
+	if (new_decl_list != NULL_TREE && old_decl_list != NULL_TREE)
+		gcc_assert(list_length(new_decl_list) == list_length(old_decl_list));
+
+	return true;
+}
+
+static void initify_node_duplication_hook(struct cgraph_node *src, struct cgraph_node *dst, void *data __unused)
+{
+	const_tree orig_fndecl, orig_decl_lst, arg;
+	unsigned int orig_argnum = 0;
+
+	if (unchanged_arglist(dst, src))
+		return;
+
+	orig_fndecl = NODE_DECL(src);
+	if (!has_nocapture_param(orig_fndecl))
+		return;
+
+	orig_decl_lst = DECL_ARGUMENTS(orig_fndecl);
+	gcc_assert(orig_decl_lst != NULL_TREE);
+
+	for (arg = orig_decl_lst; arg; arg = TREE_CHAIN(arg), orig_argnum++) {
+		if (!is_nocapture_param(orig_fndecl, orig_argnum))
+			continue;
+		if (orig_argnum_on_clone(dst, orig_argnum) == 0)
+			continue;
+
+		debug_cgraph_node(dst);
+		debug_cgraph_node(src);
+		gcc_unreachable();
+	}
+}
+
+static void initify_register_hooks(void)
+{
+	static bool init_p = false;
+
+	if (init_p)
+		return;
+	init_p = true;
+
+	node_duplication_hook_holder = cgraph_add_node_duplication_hook(&initify_node_duplication_hook, NULL);
+}
+
+static void search_init_functions_generate_summary(void)
+{
+	initify_register_hooks();
+}
+
+static void search_init_functions_read_summary(void)
+{
+	initify_register_hooks();
+}
+
 #define PASS_NAME search_init_functions
-#define NO_GENERATE_SUMMARY
-#define NO_READ_SUMMARY
 #define NO_WRITE_SUMMARY
 #define NO_READ_OPTIMIZATION_SUMMARY
 #define NO_WRITE_OPTIMIZATION_SUMMARY
