@@ -2,8 +2,8 @@
 
 initified local var: _1_YES_print_exit: _1_YES_print_exit
 initified local var: _1_YES_print_init: _1_YES_print_init
-initified function arg: _1_YES_print_init: ["2. YES %s"]
-initified function arg: _1_YES_print_init: ["3. YES\012"]
+	initified function arg: _1_YES_print_init: ["2. YES %s"] clone
+	initified function arg: _1_YES_print_init: ["3. YES\012"] clone
 initified function arg: _1_YES_print_init: ["4. YES %s %s %s"]
 initified function arg: _1_YES_print_init: ["5. YES"]
 initified function arg: _1_YES_print_init: ["6. YES"]
@@ -162,6 +162,7 @@ void __init _1_YES_print_init(const char *str)
 	printf(local_str_2);
 	print_simple_2(__func__);
 	print_simple_should_init("2. YES %s", "2. NO", "3. YES\n", "3. NO");
+//	print_simple_should_init("27. YES %s", "21. NO", "38. YES\n", "31. NO");
 	printf("4. NO\n");
 	print_vararg("5. NO", "6. NO", "4. YES %s %s %s", "5. YES", "6. YES", "7. YES");
 	print_vararg_no_vararg("7. NO", "8. YES", "9. YES %s", "8. NO");
@@ -188,7 +189,7 @@ void _21_not_init(const char *str)
 	printf("20. NO\n");
 	print_vararg("22. NO", "23. NO", "24. NO %s %s %s", "25. NO", "26. NO", "27. NO");
 	print_vararg_no_vararg("28. NO", "29. NO", "30. NO %s", "31. NO");
-	print_format_and_vararg("32. NO", "33. NO", "34. NO %s %d", "35. YES");
+	print_format_and_vararg("32. NO", "33. NO", "34. NO %s %d", "35. NO");
 	print_vararg_2("36. NO", "37. NO", "38. NO %s %s %s", "39. NO", "40. NO", "41. NO");
 	print_vararg_3("42. NO", "43. NO", "44. NO %s %s %s");
 	print_simple_3("45. NO", "46. NO");
