@@ -164,23 +164,23 @@ static void register_attributes(void __unused *event_data, void __unused *data)
 /* Determine whether the function is in the init or exit sections. */
 static enum section_type get_init_exit_section(const_tree decl)
 {
-	const_tree section;
-	tree attr_value;
+	const char *str;
+	const_tree section, attr_value;
 
 	section = lookup_attribute("section", DECL_ATTRIBUTES(decl));
 	if (!section)
 		return NONE;
 
-	gcc_assert(TREE_VALUE(section));
-	for (attr_value = TREE_VALUE(section); attr_value; attr_value = TREE_CHAIN(attr_value)) {
-		const char *str = TREE_STRING_POINTER(TREE_VALUE(attr_value));
+	attr_value = TREE_VALUE(section);
+	gcc_assert(attr_value != NULL_TREE);
+	gcc_assert(list_length(attr_value) == 1);
 
-		if (!strncmp(str, ".init.", 6))
-			return INIT;
-		if (!strncmp(str, ".exit.", 6))
-			return EXIT;
-	}
+	str = TREE_STRING_POINTER(TREE_VALUE(attr_value));
 
+	if (!strncmp(str, ".init.", 6))
+		return INIT;
+	if (!strncmp(str, ".exit.", 6))
+		return EXIT;
 	return NONE;
 }
 
