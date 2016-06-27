@@ -38,7 +38,7 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20160627",
+	.version	=	"20160627vanilla",
 	.help		=	"disable\tturn off the initify plugin\n"
 				 "verbose\tprint all initified strings and all"
 				 " functions which should be __init/__exit\n"
@@ -90,7 +90,9 @@ static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
  *    it applies to all of them that have no other uses.
  *  * attribute value 0 is ignored to allow reusing print attribute arguments
  */
-static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args, int __unused flags, bool *no_add_attrs)
+static tree handle_nocapture_attribute(tree *node, tree __unused name,
+					tree args, int __unused flags,
+					bool *no_add_attrs)
 {
 	tree orig_attr, arg;
 
@@ -116,7 +118,8 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 
 	default:
 		debug_tree(*node);
-		error("%s: %qE attribute only applies to functions", __func__, name);
+		error("%s: %qE attribute only applies to functions",
+			__func__, name);
 		return NULL_TREE;
 	}
 
@@ -124,12 +127,14 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		tree position = TREE_VALUE(arg);
 
 		if (TREE_CODE(position) != INTEGER_CST) {
-			error("%qE parameter of the %qE attribute isn't an integer (fn: %qE)", position, name, *node);
+			error("%qE parameter of the %qE attribute isn't an integer (fn: %qE)",
+				position, name, *node);
 			return NULL_TREE;
 		}
 
 		if (tree_int_cst_lt(position, integer_minus_one_node)) {
-			error("%qE parameter of the %qE attribute less than 0 (fn: %qE)", position, name, *node);
+			error("%qE parameter of the %qE attribute less than 0 (fn: %qE)",
+				position, name, *node);
 			return NULL_TREE;
 		}
 	}
@@ -254,14 +259,16 @@ static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
 	if (attr == NULL_TREE)
 		return false;
 
-	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
+	for (attr_val = TREE_VALUE(attr); attr_val;
+		attr_val = TREE_CHAIN(attr_val)) {
 		int attr_arg_val = (int)tree_to_shwi(TREE_VALUE(attr_val));
 
 		if (attr_arg_val == -1)
 			return true;
 		if (attr_arg_val == fn_arg_count)
 			return true;
-		if (attr_arg_val > fntype_arg_len && fn_arg_count >= attr_arg_val)
+		if (attr_arg_val > fntype_arg_len &&
+					fn_arg_count >= attr_arg_val)
 			return true;
 	}
 
@@ -281,7 +288,8 @@ static bool is_same_vardecl(const_tree op, const_tree vardecl)
 	if (decl == NULL_TREE || !DECL_P(decl))
 		return false;
 
-	return DECL_NAME(decl) && !strcmp(DECL_NAME_POINTER(decl), DECL_NAME_POINTER(vardecl));
+	return DECL_NAME(decl) &&
+		!strcmp(DECL_NAME_POINTER(decl), DECL_NAME_POINTER(vardecl));
 }
 
 static bool search_same_vardecl(const_tree value, const_tree vardecl)
@@ -382,11 +390,12 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		gcc_assert(fndecl != NULL_TREE);
 
 		/*
-		 * These are potentially nocapture functions that must be checked
-		 *  manually.
+		 * These are potentially nocapture functions that must be
+		 * checked manually.
 		 */
 		if (print_missing_attr)
-			inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
+			inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n",
+							fndecl, arg_count);
 		return true;
 
 	}
@@ -408,7 +417,8 @@ static bool is_in_capture_init(const_tree vardecl)
 		if (TREE_CODE(initial) != CONSTRUCTOR)
 			continue;
 
-		gcc_assert(TREE_CODE(TREE_TYPE(var)) == RECORD_TYPE || DECL_P(var));
+		gcc_assert(TREE_CODE(TREE_TYPE(var)) == RECORD_TYPE ||
+								DECL_P(var));
 		if (check_constructor(initial, vardecl))
 			return true;
 	}
@@ -459,7 +469,9 @@ static void find_local_str(void)
 		gcc_assert(str);
 
 		if (set_init_exit_section(var) && verbose)
-			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s", DECL_NAME_POINTER(current_function_decl), TREE_STRING_POINTER(str));
+			inform(DECL_SOURCE_LOCATION(var), "initified local var: %s: %s",
+				DECL_NAME_POINTER(current_function_decl),
+				TREE_STRING_POINTER(str));
 	}
 }
 
@@ -471,7 +483,8 @@ static tree create_decl(tree node)
 	str = get_string_cst(node);
 	type = TREE_TYPE(str);
 	gcc_assert(TREE_CODE(type) == ARRAY_TYPE);
-	gcc_assert(TREE_TYPE(type) != NULL_TREE && TREE_CODE(TREE_TYPE(type)) == INTEGER_TYPE);
+	gcc_assert(TREE_TYPE(type) != NULL_TREE &&
+			TREE_CODE(TREE_TYPE(type)) == INTEGER_TYPE);
 	name = create_tmp_var_name("initify");
 	decl = build_decl(loc, VAR_DECL, name, type);
 
@@ -522,7 +535,8 @@ static void set_section_call_assign(gimple stmt, tree node, unsigned int num)
 	update_stmt(stmt);
 
 	if (set_init_exit_section(TREE_OPERAND(decl, 0)) && verbose)
-		inform(gimple_location(stmt), "initified function arg: %E: [%E]", current_function_decl, get_string_cst(node));
+		inform(gimple_location(stmt), "initified function arg: %E: [%E]",
+				current_function_decl, get_string_cst(node));
 }
 
 static tree initify_create_new_var(tree type)
@@ -554,7 +568,8 @@ static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i)
 	update_stmt(assign);
 
 	if (set_init_exit_section(TREE_OPERAND(decl, 0)) && verbose)
-		inform(gimple_location(stmt), "initified local var, phi arg: %E: [%E]", current_function_decl, get_string_cst(arg));
+		inform(gimple_location(stmt), "initified local var, phi arg: %E: [%E]",
+			current_function_decl, get_string_cst(arg));
 }
 
 static void set_section_phi(bool *has_str_cst, gimple_set *visited, gphi *stmt)
@@ -720,7 +735,10 @@ static void search_const_strs(void)
 	}
 }
 
-/* Find and move constant strings to the proper init or exit read-only data section. */
+/*
+ * Find and move constant strings to the proper init or exit read-only
+ * data section.
+ */
 static unsigned int initify_execute(void)
 {
 	if (get_init_exit_section(current_function_decl) == NONE)
@@ -735,7 +753,8 @@ static unsigned int initify_execute(void)
 #define PASS_NAME initify
 #define NO_GATE
 #define TODO_FLAGS_FINISH	TODO_dump_func | TODO_verify_ssa | \
-				TODO_verify_stmts | TODO_remove_unused_locals | \
+				TODO_verify_stmts | \
+				TODO_remove_unused_locals | \
 				TODO_cleanup_cfg | TODO_ggc_collect | \
 				TODO_verify_flow | TODO_update_ssa
 
@@ -778,17 +797,21 @@ static bool should_init_exit(struct cgraph_node *callee)
 		struct cgraph_node *caller = e->caller;
 
 		caller_section = get_init_exit_section(NODE_DECL(caller));
-		if (caller_section == NONE && NODE_SYMBOL(caller)->aux == (void *)NONE)
+		if (caller_section == NONE &&
+			NODE_SYMBOL(caller)->aux == (void *)NONE)
 			only_init_callers = false;
 	}
 
 	return only_init_callers;
 }
 
-static bool inherit_section(struct cgraph_node *callee, struct cgraph_node *caller, enum section_type curfn_section)
+static bool inherit_section(struct cgraph_node *callee,
+				struct cgraph_node *caller,
+				enum section_type curfn_section)
 {
 	if (curfn_section == NONE)
-		curfn_section = (enum section_type)(unsigned long)NODE_SYMBOL(caller)->aux;
+		curfn_section = (enum section_type)(unsigned long)
+					NODE_SYMBOL(caller)->aux;
 
 	if (curfn_section == EXIT && NODE_SYMBOL(callee)->aux == (void *)INIT)
 		goto set_section;
@@ -859,7 +882,8 @@ static bool can_move_to_init_exit(const_tree fndecl)
 	if (!strcmp(section_name, ".meminit.text\000"))
 		return false;
 
-	inform(DECL_SOURCE_LOCATION(fndecl), "Section of %qE: %s\n", fndecl, section_name);
+	inform(DECL_SOURCE_LOCATION(fndecl), "Section of %qE: %s\n",
+						fndecl, section_name);
 	gcc_unreachable();
 }
 
@@ -879,13 +903,16 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 		const char *attr_name;
 		location_t loc = DECL_SOURCE_LOCATION(fndecl);
 
-		attr_name = NODE_SYMBOL(node)->aux == (void *)INIT ? "__init" : "__exit";
+		attr_name = NODE_SYMBOL(node)->aux ==
+					(void *)INIT ? "__init" : "__exit";
 
 		if (in_lto_p && TREE_PUBLIC(fndecl))
-			inform(loc, "%s attribute is missing from the %qE function (public)", attr_name, fndecl);
+			inform(loc, "%s attribute is missing from the %qE function (public)",
+							attr_name, fndecl);
 
 		if (!in_lto_p && !TREE_PUBLIC(fndecl))
-			inform(loc, "%s attribute is missing from the %qE function (static)", attr_name, fndecl);
+			inform(loc, "%s attribute is missing from the %qE function (static)",
+							attr_name, fndecl);
 	}
 
 	if (in_lto_p)
@@ -894,7 +921,8 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	/* Add the init/exit section attribute to the function declaration. */
 	DECL_ATTRIBUTES(fndecl) = copy_list(DECL_ATTRIBUTES(fndecl));
 
-	section_name = NODE_SYMBOL(node)->aux == (void *)INIT ? ".init.text" : ".exit.text";
+	section_name = NODE_SYMBOL(node)->aux ==
+				(void *)INIT ? ".init.text" : ".exit.text";
 	section_str = build_string(strlen(section_name) + 1, section_name);
 	TREE_READONLY(section_str) = 1;
 	TREE_STATIC(section_str) = 1;
@@ -933,7 +961,8 @@ static unsigned int search_init_functions_execute(void)
 }
 
 /* Find the specified argument in the clone */
-static unsigned int orig_argnum_on_clone(struct cgraph_node *new_node, unsigned int orig_argnum)
+static unsigned int orig_argnum_on_clone(struct cgraph_node *new_node,
+						unsigned int orig_argnum)
 {
 	bitmap args_to_skip;
 	unsigned int i, new_argnum = orig_argnum;
@@ -951,7 +980,8 @@ static unsigned int orig_argnum_on_clone(struct cgraph_node *new_node, unsigned 
 }
 
 /* Determine if a cloned function has all the original arguments */
-static bool unchanged_arglist(struct cgraph_node *new_node, struct cgraph_node *old_node)
+static bool unchanged_arglist(struct cgraph_node *new_node,
+				struct cgraph_node *old_node)
 {
 	const_tree new_decl_list, old_decl_list;
 
@@ -961,12 +991,15 @@ static bool unchanged_arglist(struct cgraph_node *new_node, struct cgraph_node *
 	new_decl_list = DECL_ARGUMENTS(NODE_DECL(new_node));
 	old_decl_list = DECL_ARGUMENTS(NODE_DECL(old_node));
 	if (new_decl_list != NULL_TREE && old_decl_list != NULL_TREE)
-		gcc_assert(list_length(new_decl_list) == list_length(old_decl_list));
+		gcc_assert(list_length(new_decl_list) ==
+						list_length(old_decl_list));
 
 	return true;
 }
 
-static void initify_node_duplication_hook(struct cgraph_node *src, struct cgraph_node *dst, void *data __unused)
+static void initify_node_duplication_hook(struct cgraph_node *src,
+						struct cgraph_node *dst,
+						void *data __unused)
 {
 	const_tree orig_fndecl, orig_decl_lst, arg;
 	unsigned int orig_argnum = 0;
@@ -1001,7 +1034,9 @@ static void initify_register_hooks(void)
 		return;
 	init_p = true;
 
-	node_duplication_hook_holder = cgraph_add_node_duplication_hook(&initify_node_duplication_hook, NULL);
+	node_duplication_hook_holder =
+		cgraph_add_node_duplication_hook(&initify_node_duplication_hook,
+									NULL);
 }
 
 static void search_init_functions_generate_summary(void)
@@ -1024,11 +1059,14 @@ static void search_init_functions_read_summary(void)
 
 #include "gcc-generate-ipa-pass.h"
 
-static unsigned int (*old_section_type_flags)(tree decl, const char *name, int reloc);
+static unsigned int (*old_section_type_flags)(tree decl, const char *name,
+								int reloc);
 
-static unsigned int initify_section_type_flags(tree decl, const char *name, int reloc)
+static unsigned int initify_section_type_flags(tree decl, const char *name,
+								int reloc)
 {
-	if (!strcmp(name, ".init.rodata.str") || !strcmp(name, ".exit.rodata.str")) {
+	if (!strcmp(name, ".init.rodata.str") ||
+					!strcmp(name, ".exit.rodata.str")) {
 		gcc_assert(TREE_CODE(decl) == VAR_DECL);
 		gcc_assert(DECL_INITIAL(decl));
 		gcc_assert(TREE_CODE(DECL_INITIAL(decl)) == STRING_CST);
@@ -1039,13 +1077,15 @@ static unsigned int initify_section_type_flags(tree decl, const char *name, int 
 	return old_section_type_flags(decl, name, reloc);
 }
 
-static void initify_start_unit(void __unused *gcc_data, void __unused *user_data)
+static void initify_start_unit(void __unused *gcc_data,
+						void __unused *user_data)
 {
 	old_section_type_flags = targetm.section_type_flags;
 	targetm.section_type_flags = initify_section_type_flags;
 }
 
-int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version *version)
+int plugin_init(struct plugin_name_args *plugin_info,
+					struct plugin_gcc_version *version)
 {
 	struct register_pass_info initify_pass_info, search_init_functions_info;
 	int i;
@@ -1059,10 +1099,10 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 	initify_pass_info.ref_pass_instance_number	= 1;
 	initify_pass_info.pos_op			= PASS_POS_INSERT_AFTER;
 
-	search_init_functions_info.pass				= make_search_init_functions_pass();
+	search_init_functions_info.pass = make_search_init_functions_pass();
 	search_init_functions_info.reference_pass_name		= "inline";
 	search_init_functions_info.ref_pass_instance_number	= 1;
-	search_init_functions_info.pos_op			= PASS_POS_INSERT_AFTER;
+	search_init_functions_info.pos_op = PASS_POS_INSERT_AFTER;
 
 	if (!plugin_default_version_check(version, &gcc_version)) {
 		error(G_("incompatible gcc/plugin versions"));
@@ -1087,16 +1127,21 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 			continue;
 		}
 
-		error(G_("unkown option '-fplugin-arg-%s-%s'"), plugin_name, argv[i].key);
+		error(G_("unkown option '-fplugin-arg-%s-%s'"), plugin_name,
+								argv[i].key);
 	}
 
 	register_callback(plugin_name, PLUGIN_INFO, NULL, &initify_plugin_info);
 	if (enabled) {
-		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &initify_pass_info);
-		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &search_init_functions_info);
-		register_callback(plugin_name, PLUGIN_START_UNIT, initify_start_unit, NULL);
+		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL,
+							&initify_pass_info);
+		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL,
+						&search_init_functions_info);
+		register_callback(plugin_name, PLUGIN_START_UNIT,
+						initify_start_unit, NULL);
 	}
-	register_callback(plugin_name, PLUGIN_ATTRIBUTES, register_attributes, NULL);
+	register_callback(plugin_name, PLUGIN_ATTRIBUTES, register_attributes,
+									NULL);
 
 	return 0;
 }
