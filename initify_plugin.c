@@ -831,6 +831,7 @@ static bool search_init_exit_callers(void)
 				change = true;
 		}
 	}
+
 	return change;
 }
 
@@ -946,6 +947,7 @@ static unsigned int orig_argnum_on_clone(struct cgraph_node *new_node, unsigned 
 		if (bitmap_bit_p(args_to_skip, i))
 			new_argnum--;
 	}
+
 	return new_argnum + 1;
 }
 
