@@ -38,7 +38,7 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20160627vanilla",
+	.version	=	"20160629",
 	.help		=	"disable\tturn off the initify plugin\n"
 				 "verbose\tprint all initified strings and all"
 				 " functions which should be __init/__exit\n"
@@ -494,7 +494,6 @@ static tree create_decl(tree node)
 
 	TREE_STATIC(decl) = 1;
 	TREE_READONLY(decl) = 1;
-	TYPE_READONLY(TREE_TYPE(TREE_TYPE(decl))) = 1;
 	TREE_ADDRESSABLE(decl) = 1;
 	TREE_USED(decl) = 1;
 
@@ -855,26 +854,17 @@ static bool search_init_exit_callers(void)
 				change = true;
 		}
 	}
+
 	return change;
 }
 
 /* We can't move functions to the init/exit sections from certain sections. */
 static bool can_move_to_init_exit(const_tree fndecl)
 {
-	const char *section_name;
+	const char *section_name = get_decl_section_name(fndecl);
 
-#if BUILDING_GCC_VERSION < 5000
-	const_tree section_tree = DECL_SECTION_NAME(fndecl);
-
-	if (section_tree == NULL_TREE)
-		return true;
-
-	section_name = TREE_STRING_POINTER(section_tree);
-#else
-	section_name = DECL_SECTION_NAME(fndecl);
 	if (!section_name)
 		return true;
-#endif
 
 	if (!strcmp(section_name, ".ref.text\000"))
 		return true;
@@ -976,6 +966,7 @@ static unsigned int orig_argnum_on_clone(struct cgraph_node *new_node,
 		if (bitmap_bit_p(args_to_skip, i))
 			new_argnum--;
 	}
+
 	return new_argnum + 1;
 }
 
