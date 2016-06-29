@@ -481,7 +481,6 @@ static tree create_decl(tree node)
 
 	TREE_STATIC(decl) = 1;
 	TREE_READONLY(decl) = 1;
-	TYPE_READONLY(TREE_TYPE(TREE_TYPE(decl))) = 1;
 	TREE_ADDRESSABLE(decl) = 1;
 	TREE_USED(decl) = 1;
 
