@@ -838,20 +838,10 @@ static bool search_init_exit_callers(void)
 /* We can't move functions to the init/exit sections from certain sections. */
 static bool can_move_to_init_exit(const_tree fndecl)
 {
-	const char *section_name;
+	const char *section_name = get_decl_section_name(fndecl);
 
-#if BUILDING_GCC_VERSION < 5000
-	const_tree section_tree = DECL_SECTION_NAME(fndecl);
-
-	if (section_tree == NULL_TREE)
-		return true;
-
-	section_name = TREE_STRING_POINTER(section_tree);
-#else
-	section_name = DECL_SECTION_NAME(fndecl);
 	if (!section_name)
 		return true;
-#endif
 
 	if (!strcmp(section_name, ".ref.text\000"))
 		return true;

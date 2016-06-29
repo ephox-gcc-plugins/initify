@@ -312,6 +312,22 @@ static inline struct cgraph_node *cgraph_next_function_with_gimple_body(struct c
 	return NULL;
 }
 
+static inline bool cgraph_for_node_and_aliases(cgraph_node_ptr node, bool (*callback)(cgraph_node_ptr, void *), void *data, bool include_overwritable)
+{
+	cgraph_node_ptr alias;
+
+	if (callback(node, data))
+		return true;
+
+	for (alias = node->same_body; alias; alias = alias->next) {
+		if (include_overwritable || cgraph_function_body_availability(alias) > AVAIL_OVERWRITABLE)
+			if (cgraph_for_node_and_aliases(alias, callback, data, include_overwritable))
+				return true;
+	}
+
+	return false;
+}
+
 #define FOR_EACH_FUNCTION_WITH_GIMPLE_BODY(node) \
 	for ((node) = cgraph_first_function_with_gimple_body(); (node); \
 		(node) = cgraph_next_function_with_gimple_body(node))
@@ -521,6 +537,14 @@ static inline const greturn *as_a_const_greturn(const_gimple stmt)
 
 typedef struct rtx_def rtx_insn;
 
+static inline const char *get_decl_section_name(const_tree decl)
+{
+	if (DECL_SECTION_NAME(decl) == NULL_TREE)
+		return  NULL;
+
+	return TREE_STRING_POINTER(DECL_SECTION_NAME(decl));
+}
+
 static inline void set_decl_section_name(tree node, const char *value)
 {
 	if (value)
@@ -638,6 +662,11 @@ inline bool is_a_helper<const gassign *>::test(const_gimple gs)
 
 #define INSN_DELETED_P(insn) (insn)->deleted()
 
+static inline const char *get_decl_section_name(const_tree decl)
+{
+	return DECL_SECTION_NAME(decl);
+}
+
 /* symtab/cgraph related */
 #define debug_cgraph_node(node) (node)->debug()
 #define cgraph_get_node(decl) cgraph_node::get(decl)
@@ -699,6 +728,11 @@ static inline enum availability cgraph_function_body_availability(cgraph_node_pt
 static inline cgraph_node_ptr cgraph_alias_target(cgraph_node_ptr node)
 {
 	return node->get_alias_target();
+}
+
+static inline bool cgraph_for_node_and_aliases(cgraph_node_ptr node, bool (*callback)(cgraph_node_ptr, void *), void *data, bool include_overwritable)
+{
+	return node->call_for_symbol_thunks_and_aliases(callback, data, include_overwritable);
 }
 
 static inline struct cgraph_node_hook_list *cgraph_add_function_insertion_hook(cgraph_node_hook hook, void *data)
