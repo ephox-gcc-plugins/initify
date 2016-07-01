@@ -85,6 +85,14 @@ typedef struct pointer_set_t gimple_set;
 
 static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
 
+static bool is_vararg_arg(tree arg_list, unsigned int num)
+{
+	if (tree_last(arg_list) == void_list_node)
+		return false;
+
+	return num >= (unsigned int)list_length(arg_list);
+}
+
 /* nocapture attribute:
  *  * to mark nocapture function arguments. If used on a vararg argument
  *    it applies to all of them that have no other uses.
@@ -92,13 +100,16 @@ static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
  */
 static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args, int __unused flags, bool *no_add_attrs)
 {
-	tree orig_attr, arg;
+	tree orig_attr, arg, type_args = NULL_TREE;
 
 	*no_add_attrs = true;
 	switch (TREE_CODE(*node)) {
 	case FUNCTION_DECL:
+		type_args = TYPE_ARG_TYPES(TREE_TYPE(*node));
+		break;
 	case FUNCTION_TYPE:
 	case METHOD_TYPE:
+		type_args = TYPE_ARG_TYPES(*node);
 		break;
 
 	case TYPE_DECL: {
@@ -109,8 +120,10 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		if (fn_code == POINTER_TYPE)
 			fntype = TREE_TYPE(fntype);
 		fn_code = TREE_CODE(fntype);
-		if (fn_code == FUNCTION_TYPE || fn_code == METHOD_TYPE)
+		if (fn_code == FUNCTION_TYPE || fn_code == METHOD_TYPE) {
+			type_args = TYPE_ARG_TYPES(TREE_TYPE(*node));
 			break;
+		}
 		/* FALLTHROUGH */
 	}
 
@@ -120,7 +133,11 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		return NULL_TREE;
 	}
 
+	gcc_assert(type_args != NULL_TREE);
+
 	for (arg = args; arg; arg = TREE_CHAIN(arg)) {
+		const_tree type_arg, type;
+		int idx;
 		tree position = TREE_VALUE(arg);
 
 		if (TREE_CODE(position) != INTEGER_CST) {
@@ -132,6 +149,31 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 			error("%qE parameter of the %qE attribute less than 0 (fn: %qE)", position, name, *node);
 			return NULL_TREE;
 		}
+
+		idx = (int)tree_to_shwi(position);
+		if (idx == 0)
+			return NULL_TREE;
+		if (is_vararg_arg(type_args, idx))
+			return NULL_TREE;
+
+		type_arg = chain_index(idx - 1, type_args);
+		type = TREE_VALUE(type_arg);
+
+		if (TREE_CODE(type) != POINTER_TYPE) {
+			error("%E. parameter of the %qE function must be a pointer", position, *node);
+			return NULL_TREE;
+		}
+
+		if (!TYPE_READONLY(TREE_TYPE(type))) {
+			error("%E. parameter of the %qE function must be readonly", position, *node);
+			return NULL_TREE;
+		}
+
+		if (TREE_THIS_VOLATILE(TREE_TYPE(type))) {
+			error("%E. parameter of the %qE function can't be volatile", position, *node);
+			return NULL_TREE;
+		}
+
 	}
 
 	orig_attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(*node));
