@@ -121,7 +121,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 			fntype = TREE_TYPE(fntype);
 		fn_code = TREE_CODE(fntype);
 		if (fn_code == FUNCTION_TYPE || fn_code == METHOD_TYPE) {
-			type_args = TYPE_ARG_TYPES(TREE_TYPE(*node));
+			type_args = TYPE_ARG_TYPES(fntype);
 			break;
 		}
 		/* FALLTHROUGH */
