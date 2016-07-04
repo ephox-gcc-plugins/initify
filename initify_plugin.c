@@ -154,7 +154,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		if (idx == 0)
 			return NULL_TREE;
 		if (is_vararg_arg(type_args, idx))
-			return NULL_TREE;
+			break;
 
 		type_arg = chain_index(idx - 1, type_args);
 		type = TREE_VALUE(type_arg);
