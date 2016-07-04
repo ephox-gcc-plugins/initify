@@ -38,7 +38,7 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20160630vanilla",
+	.version	=	"20160701vanilla",
 	.help		=	"disable\tturn off the initify plugin\n"
 				 "verbose\tprint all initified strings and all"
 				 " functions which should be __init/__exit\n"
@@ -159,7 +159,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name,
 		if (idx == 0)
 			return NULL_TREE;
 		if (is_vararg_arg(type_args, idx))
-			return NULL_TREE;
+			break;
 
 		type_arg = chain_index(idx - 1, type_args);
 		type = TREE_VALUE(type_arg);
