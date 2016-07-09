@@ -152,7 +152,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 
 		idx = (int)tree_to_shwi(position);
 		if (idx == 0)
-			return NULL_TREE;
+			continue;
 		if (is_vararg_arg(type_args, idx))
 			break;
 
