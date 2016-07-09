@@ -427,13 +427,129 @@ static bool compare_ops(const_tree vardecl, tree op)
 	return search_same_vardecl(op, vardecl);
 }
 
+static bool is_nocapture_arg(const gcall *stmt, unsigned int arg_count)
+{
+	const_tree arg, fndecl;
+
+	arg = gimple_call_arg(stmt, arg_count - 1);
+	gcc_assert(TREE_CODE(TREE_TYPE(arg)) == POINTER_TYPE);
+
+	fndecl = gimple_call_fndecl(stmt);
+	if (is_nocapture_param(fndecl, (int)arg_count))
+		return true;
+
+	gcc_assert(fndecl != NULL_TREE);
+
+	/*
+	 * These are potentially nocapture functions that must be checked
+	 *  manually.
+	 */
+	if (print_missing_attr)
+		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
+	return false;
+}
+
+static unsigned int get_arg_count(const gcall *call, const_tree arg)
+{
+	unsigned idx;
+
+	for (idx = 0; idx < gimple_call_num_args(call); idx++) {
+		const_tree cur_arg = gimple_call_arg(call, idx);
+
+		if (cur_arg == arg)
+			return idx + 1;
+	}
+
+	debug_tree(arg);
+	debug_gimple_stmt(call);
+	gcc_unreachable();
+}
+
+static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visited, tree node)
+{
+	imm_use_iterator imm_iter;
+	use_operand_p use_p;
+
+	if (*has_capture_use)
+		return;
+
+	if (TREE_CODE(node) != SSA_NAME)
+		goto true_out;
+
+	if (TREE_CODE(TREE_TYPE(node)) == INTEGER_TYPE)
+		goto true_out;
+
+	FOR_EACH_IMM_USE_FAST(use_p, imm_iter, node) {
+		const_gimple use_stmt = USE_STMT(use_p);
+
+		if (use_stmt == NULL)
+			return;
+		if (is_gimple_debug(use_stmt))
+			continue;
+
+		if (pointer_set_insert(use_visited, use_stmt))
+			continue;
+
+		switch (gimple_code(use_stmt)) {
+		case GIMPLE_COND:
+			return;
+
+		case GIMPLE_ASM:
+			goto true_out
+
+		case GIMPLE_CALL: {
+			const gcall *call = as_a_const_gcall(use_stmt);
+			unsigned int arg_count = get_arg_count(call, node);
+
+			if (!is_nocapture_arg(call, arg_count))
+				goto true_out;
+			return;
+		}
+
+		case GIMPLE_ASSIGN: {
+			tree lhs = gimple_assign_lhs(use_stmt);
+
+			has_capture_use_ssa_var(has_capture_use, use_visited, lhs);
+			return;
+		}
+
+		case GIMPLE_PHI: {
+			tree result = gimple_phi_result(use_stmt);
+
+			has_capture_use_ssa_var(has_capture_use, use_visited, result);
+			return;
+		}
+
+		default:
+			debug_tree(node);
+			debug_gimple_stmt(use_stmt);
+			gcc_unreachable();
+		}
+	}
+	gcc_unreachable();
+
+true_out:
+	*has_capture_use = true;
+}
+
+static bool search_capture_ssa_use(tree node)
+{
+	gimple_set *use_visited;
+	bool has_capture_use = false;
+
+	use_visited = pointer_set_create();
+	has_capture_use_ssa_var(&has_capture_use, use_visited, node);
+	pointer_set_destroy(use_visited);
+
+	return has_capture_use;
+}
+
 static bool search_capture_use(const_tree vardecl, gimple stmt)
 {
 	unsigned int i;
 
 	for (i = 0; i < gimple_num_ops(stmt); i++) {
 		unsigned int arg_count;
-		const_tree fndecl, arg;
 		tree op = *(gimple_op_ptr(stmt, i));
 
 		if (op == NULL_TREE)
@@ -444,29 +560,35 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		if (!compare_ops(vardecl, op))
 			continue;
 
-		if (!is_gimple_call(stmt))
+		switch (gimple_code(stmt)) {
+		case GIMPLE_COND:
+			break;
+
+		case GIMPLE_ASM:
+			gcc_assert(get_init_exit_section(vardecl) == NONE);
 			return true;
 
-		/* return, fndecl */
-		gcc_assert(i >= 3);
-		arg_count = i - 2;
+		case GIMPLE_CALL:
+			/* return, fndecl */
+			gcc_assert(i >= 3);
+			arg_count = i - 2;
 
-		arg = gimple_call_arg(stmt, arg_count - 1);
-		gcc_assert(TREE_CODE(TREE_TYPE(arg)) == POINTER_TYPE);
+			if (is_nocapture_arg(as_a_const_gcall(stmt), arg_count))
+				break;
+			gcc_assert(get_init_exit_section(vardecl) == NONE);
+			return true;
 
-		fndecl = gimple_call_fndecl(stmt);
-		if (is_nocapture_param(fndecl, (int)arg_count))
-			continue;
+		case GIMPLE_ASSIGN:
+			if (!search_capture_ssa_use(gimple_assign_lhs(stmt)))
+				break;
+			gcc_assert(get_init_exit_section(vardecl) == NONE);
+			return true;
 
-		gcc_assert(fndecl != NULL_TREE);
-
-		/*
-		 * These are potentially nocapture functions that must be checked
-		 *  manually.
-		 */
-		if (print_missing_attr)
-			inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_count);
-		return true;
+		default:
+			debug_tree(vardecl);
+			debug_gimple_stmt(stmt);
+			gcc_unreachable();
+		}
 
 	}
 	return false;
@@ -627,6 +749,10 @@ static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i)
 	location_t loc;
 
 	arg = gimple_phi_arg_def(stmt, i);
+
+	if (search_capture_ssa_use(arg))
+		return;
+
 	decl = create_decl(arg);
 
 	assign = gimple_build_assign(ssa_var, decl);
@@ -672,16 +798,12 @@ static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node)
 	if (!*has_str_cst)
 		return;
 
-	if (TREE_CODE(node) != SSA_NAME) {
-		*has_str_cst = false;
-		return;
-	}
+	if (TREE_CODE(node) != SSA_NAME)
+		goto false_out;
 
 	parm_decl = SSA_NAME_VAR(node);
-	if (parm_decl != NULL_TREE && TREE_CODE(parm_decl) == PARM_DECL) {
-		*has_str_cst = false;
-		return;
-	}
+	if (parm_decl != NULL_TREE && TREE_CODE(parm_decl) == PARM_DECL)
+		goto false_out;
 
 	def_stmt = SSA_NAME_DEF_STMT(node);
 	if (pointer_set_insert(visited, def_stmt))
@@ -692,8 +814,7 @@ static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node)
 	case GIMPLE_CALL:
 	case GIMPLE_ASM:
 	case GIMPLE_RETURN:
-		*has_str_cst = false;
-		return;
+		goto false_out;
 
 	case GIMPLE_PHI:
 		set_section_phi(has_str_cst, visited, as_a_gphi(def_stmt));
@@ -703,15 +824,19 @@ static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node)
 		tree rhs1, str;
 
 		if (gimple_num_ops(def_stmt) != 2)
-			return;
+			goto false_out;
 
 		rhs1 = gimple_assign_rhs1(def_stmt);
 		walk_def_stmt(has_str_cst, visited, rhs1);
 		if (!*has_str_cst)
 			return;
+
+		if (search_capture_ssa_use(node))
+			goto false_out;
+
 		str = get_string_cst(rhs1);
-		if (str != NULL_TREE)
-			set_section_call_assign(def_stmt, rhs1, 0);
+		gcc_assert(str != NULL_TREE);
+		set_section_call_assign(def_stmt, rhs1, 0);
 		return;
 	}
 
@@ -720,6 +845,10 @@ static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node)
 		error("%s: unknown gimple code", __func__);
 		gcc_unreachable();
 	}
+	gcc_unreachable();
+
+false_out:
+	*has_str_cst = false;
 }
 
 /* Search constant strings assigned to variables. */
