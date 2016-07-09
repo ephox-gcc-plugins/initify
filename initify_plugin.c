@@ -93,14 +93,84 @@ static bool is_vararg_arg(tree arg_list, unsigned int num)
 	return num >= (unsigned int)list_length(arg_list);
 }
 
+static bool check_parameter(tree *node, tree type_args, int idx)
+{
+	const_tree type_arg, type;
+
+	if (is_vararg_arg(type_args, idx))
+		return true;
+
+	type_arg = chain_index(idx - 1, type_args);
+	type = TREE_VALUE(type_arg);
+
+	if (TREE_CODE(type) != POINTER_TYPE) {
+		error("%u. parameter of the %qE function must be a pointer", idx, *node);
+		return false;
+	}
+
+	if (!TYPE_READONLY(TREE_TYPE(type))) {
+		error("%u. parameter of the %qE function must be readonly", idx, *node);
+		return false;
+	}
+
+	if (TREE_THIS_VOLATILE(TREE_TYPE(type))) {
+		error("%u. parameter of the %qE function can't be volatile", idx, *node);
+		return false;
+	}
+
+	return true;
+}
+
+static bool check_marked_parameters(tree *node, tree type_args, const_tree args, const_tree name)
+{
+	const_tree arg;
+
+	for (arg = args; arg; arg = TREE_CHAIN(arg)) {
+		int idx;
+		tree position = TREE_VALUE(arg);
+
+		if (TREE_CODE(position) != INTEGER_CST) {
+			error("%qE parameter of the %qE attribute isn't an integer (fn: %qE)", position, name, *node);
+			return false;
+		}
+
+		if (tree_int_cst_lt(position, integer_zero_node)) {
+			error("%qE parameter of the %qE attribute less than 0 (fn: %qE)", position, name, *node);
+			return false;
+		}
+
+		idx = (int)tree_to_shwi(position);
+		if (idx == 0)
+			continue;
+
+		if (!check_parameter(node, type_args, idx))
+			return false;
+	}
+	return true;
+}
+
+static bool check_all_parameters(tree *node, tree type_args)
+{
+	int arg, len = list_length(type_args);
+
+	if (tree_last(type_args) == void_list_node)
+		len -= 1;
+
+	for (arg = 1; arg <= len; arg++) {
+		if (!check_parameter(node, type_args, arg))
+			return false;
+	}
+	return true;
+}
+
 /* nocapture attribute:
  *  * to mark nocapture function arguments. If used on a vararg argument
  *    it applies to all of them that have no other uses.
  *  * attribute value 0 is ignored to allow reusing print attribute arguments
  */
-static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args, int __unused flags, bool *no_add_attrs)
+static tree handle_nocapture_attribute(tree *node, tree name, tree args, int __unused flags, bool *no_add_attrs)
 {
-	tree orig_attr, arg, type_args = NULL_TREE;
+	tree orig_attr, type_args = NULL_TREE;
 
 	*no_add_attrs = true;
 	switch (TREE_CODE(*node)) {
@@ -113,68 +183,33 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 		break;
 
 	case TYPE_DECL: {
-		enum tree_code fn_code;
-		const_tree fntype = TREE_TYPE(*node);
+				enum tree_code fn_code;
+				const_tree fntype = TREE_TYPE(*node);
 
-		fn_code = TREE_CODE(fntype);
-		if (fn_code == POINTER_TYPE)
-			fntype = TREE_TYPE(fntype);
-		fn_code = TREE_CODE(fntype);
-		if (fn_code == FUNCTION_TYPE || fn_code == METHOD_TYPE) {
-			type_args = TYPE_ARG_TYPES(fntype);
-			break;
-		}
-		/* FALLTHROUGH */
-	}
+				fn_code = TREE_CODE(fntype);
+				if (fn_code == POINTER_TYPE)
+					fntype = TREE_TYPE(fntype);
+				fn_code = TREE_CODE(fntype);
+				if (fn_code == FUNCTION_TYPE || fn_code == METHOD_TYPE) {
+					type_args = TYPE_ARG_TYPES(fntype);
+					break;
+				}
+				/* FALLTHROUGH */
+			}
 
 	default:
-		debug_tree(*node);
-		error("%s: %qE attribute only applies to functions", __func__, name);
-		return NULL_TREE;
+			debug_tree(*node);
+			error("%s: %qE attribute only applies to functions", __func__, name);
+			return NULL_TREE;
 	}
 
 	gcc_assert(type_args != NULL_TREE);
 
-	for (arg = args; arg; arg = TREE_CHAIN(arg)) {
-		const_tree type_arg, type;
-		int idx;
-		tree position = TREE_VALUE(arg);
+	if (!check_marked_parameters(node, type_args, args, name))
+		return NULL_TREE;
 
-		if (TREE_CODE(position) != INTEGER_CST) {
-			error("%qE parameter of the %qE attribute isn't an integer (fn: %qE)", position, name, *node);
-			return NULL_TREE;
-		}
-
-		if (tree_int_cst_lt(position, integer_minus_one_node)) {
-			error("%qE parameter of the %qE attribute less than 0 (fn: %qE)", position, name, *node);
-			return NULL_TREE;
-		}
-
-		idx = (int)tree_to_shwi(position);
-		if (idx == 0)
-			continue;
-		if (is_vararg_arg(type_args, idx))
-			break;
-
-		type_arg = chain_index(idx - 1, type_args);
-		type = TREE_VALUE(type_arg);
-
-		if (TREE_CODE(type) != POINTER_TYPE) {
-			error("%E. parameter of the %qE function must be a pointer", position, *node);
-			return NULL_TREE;
-		}
-
-		if (!TYPE_READONLY(TREE_TYPE(type))) {
-			error("%E. parameter of the %qE function must be readonly", position, *node);
-			return NULL_TREE;
-		}
-
-		if (TREE_THIS_VOLATILE(TREE_TYPE(type))) {
-			error("%E. parameter of the %qE function can't be volatile", position, *node);
-			return NULL_TREE;
-		}
-
-	}
+	if (args == NULL_TREE && !check_all_parameters(node, type_args))
+		return NULL_TREE;
 
 	orig_attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(*node));
 	if (orig_attr)
@@ -187,7 +222,7 @@ static tree handle_nocapture_attribute(tree *node, tree __unused name, tree args
 
 static struct attribute_spec nocapture_attr = {
 	.name				= "nocapture",
-	.min_length			= 1,
+	.min_length			= 0,
 	.max_length			= -1,
 	.decl_required			= true,
 	.type_required			= false,
@@ -296,11 +331,12 @@ static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
 	if (attr == NULL_TREE)
 		return false;
 
+	if (TREE_VALUE(attr) == NULL_TREE)
+		return true;
+
 	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
 		int attr_arg_val = (int)tree_to_shwi(TREE_VALUE(attr_val));
 
-		if (attr_arg_val == -1)
-			return true;
 		if (attr_arg_val == fn_arg_count)
 			return true;
 		if (attr_arg_val > fntype_arg_len && fn_arg_count >= attr_arg_val)

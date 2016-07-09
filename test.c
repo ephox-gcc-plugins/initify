@@ -113,7 +113,7 @@ static int __attribute__((nocapture(1))) print_simple_2(const char *format)
 	return printf(format, format, format);
 }
 
-int __attribute__((nocapture(-1))) print_simple_3(const char *format, const char *d)
+int __attribute__((nocapture)) print_simple_3(const char *format, const char *d)
 {
 	return printf(format, d);
 }
