@@ -177,25 +177,26 @@ static tree handle_nocapture_attribute(tree *node, tree name, tree args, int __u
 	case FUNCTION_DECL:
 		type_args = TYPE_ARG_TYPES(TREE_TYPE(*node));
 		break;
+
 	case FUNCTION_TYPE:
 	case METHOD_TYPE:
 		type_args = TYPE_ARG_TYPES(*node);
 		break;
 
 	case TYPE_DECL: {
-				enum tree_code fn_code;
-				const_tree fntype = TREE_TYPE(*node);
+		enum tree_code fn_code;
+		const_tree fntype = TREE_TYPE(*node);
 
-				fn_code = TREE_CODE(fntype);
-				if (fn_code == POINTER_TYPE)
-					fntype = TREE_TYPE(fntype);
-				fn_code = TREE_CODE(fntype);
-				if (fn_code == FUNCTION_TYPE || fn_code == METHOD_TYPE) {
-					type_args = TYPE_ARG_TYPES(fntype);
-					break;
-				}
-				/* FALLTHROUGH */
-			}
+		fn_code = TREE_CODE(fntype);
+		if (fn_code == POINTER_TYPE)
+			fntype = TREE_TYPE(fntype);
+		fn_code = TREE_CODE(fntype);
+		if (fn_code == FUNCTION_TYPE || fn_code == METHOD_TYPE) {
+			type_args = TYPE_ARG_TYPES(fntype);
+			break;
+		}
+		/* FALLTHROUGH */
+	}
 
 	default:
 			debug_tree(*node);
@@ -477,7 +478,7 @@ static bool is_in_capture_init(const_tree vardecl)
 	tree var;
 
 	FOR_EACH_LOCAL_DECL(cfun, i, var) {
-		const_tree initial = DECL_INITIAL(var);
+		const_tree type, initial = DECL_INITIAL(var);
 
 		if (DECL_EXTERNAL(var))
 			continue;
@@ -486,7 +487,8 @@ static bool is_in_capture_init(const_tree vardecl)
 		if (TREE_CODE(initial) != CONSTRUCTOR)
 			continue;
 
-		gcc_assert(TREE_CODE(TREE_TYPE(var)) == RECORD_TYPE || DECL_P(var));
+		type = TREE_TYPE(var);
+		gcc_assert(TREE_CODE(type) == RECORD_TYPE || DECL_P(var));
 		if (check_constructor(initial, vardecl))
 			return true;
 	}
@@ -543,14 +545,18 @@ static void find_local_str(void)
 
 static tree create_decl(tree node)
 {
-	tree str, decl, type, name;
-	location_t loc = DECL_SOURCE_LOCATION(current_function_decl);
+	tree str, decl, type, name, type_type;
+	location_t loc;
 
 	str = get_string_cst(node);
 	type = TREE_TYPE(str);
 	gcc_assert(TREE_CODE(type) == ARRAY_TYPE);
-	gcc_assert(TREE_TYPE(type) != NULL_TREE && TREE_CODE(TREE_TYPE(type)) == INTEGER_TYPE);
+
+	type_type = TREE_TYPE(type);
+	gcc_assert(type_type != NULL_TREE && TREE_CODE(type_type) == INTEGER_TYPE);
+
 	name = create_tmp_var_name("initify");
+	loc = DECL_SOURCE_LOCATION(current_function_decl);
 	decl = build_decl(loc, VAR_DECL, name, type);
 
 	DECL_INITIAL(decl) = str;
@@ -617,6 +623,8 @@ static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i)
 	gimple_stmt_iterator gsi;
 	basic_block arg_bb;
 	tree decl, arg;
+	const_tree str;
+	location_t loc;
 
 	arg = gimple_phi_arg_def(stmt, i);
 	decl = create_decl(arg);
@@ -630,8 +638,12 @@ static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i)
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
-	if (set_init_exit_section(TREE_OPERAND(decl, 0)) && verbose)
-		inform(gimple_location(stmt), "initified local var, phi arg: %E: [%E]", current_function_decl, get_string_cst(arg));
+	if (!set_init_exit_section(TREE_OPERAND(decl, 0)) || !verbose)
+		return;
+
+	loc = gimple_location(stmt);
+	str = get_string_cst(arg);
+	inform(loc, "initified local var, phi arg: %E: [%E]", current_function_decl, str);
 }
 
 static void set_section_phi(bool *has_str_cst, gimple_set *visited, gphi *stmt)
