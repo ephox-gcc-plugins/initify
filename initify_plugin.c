@@ -319,15 +319,39 @@ static bool is_syscall(const_tree fn)
 	return false;
 }
 
+static bool search_attribute_param(const_tree attr, int fn_arg_count, int fntype_arg_len)
+{
+	const_tree attr_val;
+
+	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
+		int attr_arg_val;
+
+		if (TREE_CODE(TREE_VALUE(attr_val)) == IDENTIFIER_NODE)
+			continue;
+
+		attr_arg_val = (int)tree_to_shwi(TREE_VALUE(attr_val));
+		if (attr_arg_val == fn_arg_count)
+			return true;
+		if (attr_arg_val > fntype_arg_len && fn_arg_count >= attr_arg_val)
+			return true;
+	}
+	return false;
+}
+
 static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
 {
-	const_tree attr, attr_val;
+	const_tree attr;
 	int fntype_arg_len;
 
 	if (is_syscall(fndecl))
 		return true;
 
 	fntype_arg_len = type_num_arguments(TREE_TYPE(fndecl));
+
+	attr = lookup_attribute("format", TYPE_ATTRIBUTES(TREE_TYPE(fndecl)));
+	if (attr != NULL_TREE && search_attribute_param(attr, fn_arg_count, fntype_arg_len))
+		return true;
+
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 	if (attr == NULL_TREE)
 		return false;
@@ -335,16 +359,7 @@ static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
 	if (TREE_VALUE(attr) == NULL_TREE)
 		return true;
 
-	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
-		int attr_arg_val = (int)tree_to_shwi(TREE_VALUE(attr_val));
-
-		if (attr_arg_val == fn_arg_count)
-			return true;
-		if (attr_arg_val > fntype_arg_len && fn_arg_count >= attr_arg_val)
-			return true;
-	}
-
-	return false;
+	return search_attribute_param(attr, fn_arg_count, fntype_arg_len);
 }
 
 static bool is_same_vardecl(const_tree op, const_tree vardecl)
@@ -495,7 +510,7 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 			return;
 
 		case GIMPLE_ASM:
-			goto true_out
+			goto true_out;
 
 		case GIMPLE_CALL: {
 			const gcall *call = as_a_const_gcall(use_stmt);
@@ -911,6 +926,8 @@ static bool has_nocapture_param(const_tree fndecl)
 		return true;
 
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
+	if (attr == NULL_TREE)
+		attr = lookup_attribute("format", TYPE_ATTRIBUTES(TREE_TYPE(fndecl)));
 	return attr != NULL_TREE;
 }
 

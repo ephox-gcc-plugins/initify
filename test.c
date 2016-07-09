@@ -45,9 +45,10 @@ __init attribute is missing from the 'print_simple_should_init.isra' function
 #define __initconst __constsection(.init.rodata)
 #define __exitconst __constsection(.exit.rodata)
 
-#define __printf(a, b) __attribute__((nocapture(a, b)))
+#define __printf(a, b) __attribute__((format(printf, a, b)))
+#define __nocapture(...) __attribute__((nocapture(__VA_ARGS__)))
 
-int __printf(3, 0) __attribute__((nocapture(2))) print_vararg_no_vararg(const char *d, const char *a, const char *str, ...)
+int __printf(3, 0) __nocapture(2) print_vararg_no_vararg(const char *d, const char *a, const char *str, ...)
 {
 	va_list args;
 
@@ -58,20 +59,7 @@ int __printf(3, 0) __attribute__((nocapture(2))) print_vararg_no_vararg(const ch
 	return printf(d);
 }
 
-int __attribute__((nocapture(1, 3))) print_format_and_vararg(const char *d, const char *str, ...)
-{
-	va_list args;
-
-	va_start(args, str);
-	printf("%s\n", va_arg(args, const char *));
-	printf("%s\n", va_arg(args, const char *));
-	printf("%s\n", va_arg(args, const char *));
-	va_end(args);
-
-	return printf(d);
-}
-
-int __attribute__((nocapture(3))) print_vararg(const char *d, const char *str, ...)
+int __nocapture(1, 3) print_format_and_vararg(const char *d, const char *str, ...)
 {
 	va_list args;
 
@@ -84,7 +72,7 @@ int __attribute__((nocapture(3))) print_vararg(const char *d, const char *str, .
 	return printf(d);
 }
 
-int __printf(1, 3) __attribute__((nocapture(2))) print_vararg_2(const char *d, const char *str, ...)
+int __nocapture(3) print_vararg(const char *d, const char *str, ...)
 {
 	va_list args;
 
@@ -97,7 +85,20 @@ int __printf(1, 3) __attribute__((nocapture(2))) print_vararg_2(const char *d, c
 	return printf(d);
 }
 
-int __attribute__((nocapture(1))) print_vararg_3(const char *d, const char *str, ...)
+int __printf(1, 3) __nocapture(2) print_vararg_2(const char *d, const char *str, ...)
+{
+	va_list args;
+
+	va_start(args, str);
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	printf("%s\n", va_arg(args, const char *));
+	va_end(args);
+
+	return printf(d);
+}
+
+int __printf(2, 3) print_vararg_3(const char *d, const char *str, ...)
 {
 	va_list args;
 
@@ -108,22 +109,22 @@ int __attribute__((nocapture(1))) print_vararg_3(const char *d, const char *str,
 	return printf(d);
 }
 
-static int __attribute__((nocapture(1))) print_simple_2(const char *format)
+static int __nocapture(1) print_simple_2(const char *format)
 {
 	return printf(format, format, format);
 }
 
-int __attribute__((nocapture)) print_simple_3(const char *format, const char *d)
+int __nocapture() print_simple_3(const char *format, const char *d)
 {
 	return printf(format, d);
 }
 
-static int __attribute__((nocapture(1))) print_simple_4(const char *format)
+static int __nocapture(1) print_simple_4(const char *format)
 {
 	return printf(format, format, format);
 }
 
-static int __printf(1, 3) print_simple_should_init(const char *format, const char *d, const char *str, const char *str2)
+static int __nocapture(1, 3) print_simple_should_init(const char *format, const char *d, const char *str, const char *str2)
 {
 	print_simple_4("SHOULD_INIT");
 	return printf(format, str, str2);
