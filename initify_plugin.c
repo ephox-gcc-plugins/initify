@@ -84,6 +84,8 @@ typedef struct pointer_set_t gimple_set;
 #endif
 
 static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
+static bool has_capture_use_local_var(const_tree vardecl);
+
 
 static bool is_vararg_arg(tree arg_list, unsigned int num)
 {
@@ -614,6 +616,9 @@ static bool is_in_capture_init(const_tree vardecl)
 	unsigned int i __unused;
 	tree var;
 
+	if (TREE_CODE(vardecl) == PARM_DECL)
+		return false;
+
 	FOR_EACH_LOCAL_DECL(cfun, i, var) {
 		const_tree type, initial = DECL_INITIAL(var);
 
@@ -635,6 +640,9 @@ static bool is_in_capture_init(const_tree vardecl)
 static bool has_capture_use_local_var(const_tree vardecl)
 {
 	basic_block bb;
+	enum tree_code code = TREE_CODE(vardecl);
+
+	gcc_assert(code == VAR_DECL || code == PARM_DECL);
 
 	if (is_in_capture_init(vardecl))
 		return true;
@@ -955,9 +963,40 @@ static void search_const_strs(void)
 	}
 }
 
+static void verify_nocapture_functions(void)
+{
+	int i, len;
+	tree arg_list;
+
+	if (is_syscall(current_function_decl))
+		return;
+
+	if (!has_nocapture_param(current_function_decl))
+		return;
+
+	arg_list = DECL_ARGUMENTS(current_function_decl);
+	len = list_length(arg_list);
+	for (i = 0; i < len; i++) {
+		const_tree arg;
+
+		if (!is_nocapture_param(current_function_decl, i + 1))
+			continue;
+
+		arg = chain_index(i, arg_list);
+		gcc_assert(arg != NULL_TREE);
+
+		if (has_capture_use_local_var(arg)) {
+			error("%qE captures its %u (%qD) parameter, please remove it from the nocapture attribute.", current_function_decl, i + 1, arg);
+			gcc_unreachable();
+		}
+	}
+}
+
 /* Find and move constant strings to the proper init or exit read-only data section. */
 static unsigned int initify_execute(void)
 {
+	verify_nocapture_functions();
+
 	if (get_init_exit_section(current_function_decl) == NONE)
 		return 0;
 
