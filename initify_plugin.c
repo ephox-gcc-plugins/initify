@@ -85,6 +85,15 @@ static inline void pointer_set_destroy(gimple_set *visited)
 typedef struct pointer_set_t gimple_set;
 #endif
 
+static gimple initify_get_def_stmt(const_tree node)
+{
+	gcc_assert(node != NULL_TREE);
+
+	if (TREE_CODE(node) != SSA_NAME)
+		return NULL;
+	return SSA_NAME_DEF_STMT(node);
+}
+
 static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
 static bool has_capture_use_local_var(const_tree vardecl);
 
@@ -578,7 +587,7 @@ static bool only_nocapture_call(const_tree decl)
 
 static bool local_struct_nocapture_use(const_tree node)
 {
-	const_tree decl;
+	const_tree decl, type;
 	enum tree_code code = TREE_CODE(node);
 
 	if (code == SSA_NAME)
@@ -588,7 +597,11 @@ static bool local_struct_nocapture_use(const_tree node)
 		return false;
 
 	decl = TREE_OPERAND(node, 0);
-	gcc_assert(TREE_CODE(TREE_TYPE(decl)) == RECORD_TYPE);
+	type = TREE_TYPE(decl);
+	gcc_assert(TREE_CODE(type) == RECORD_TYPE);
+
+	if (!TYPE_NAME(type) || strcmp(TYPE_NAME_POINTER(type), "va_format"))
+		return false;
 
 	return only_nocapture_call(decl);
 }
@@ -968,7 +981,7 @@ static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node)
 	if (parm_decl != NULL_TREE && TREE_CODE(parm_decl) == PARM_DECL)
 		goto false_out;
 
-	def_stmt = SSA_NAME_DEF_STMT(node);
+	def_stmt = initify_get_def_stmt(node);
 	if (pointer_set_insert(visited, def_stmt))
 		return;
 
