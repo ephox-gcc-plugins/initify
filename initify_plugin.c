@@ -101,25 +101,32 @@ static bool is_vararg_arg(tree arg_list, unsigned int num)
 
 static bool check_parameter(tree *node, tree type_args, int idx)
 {
-	const_tree type_arg, type;
+	const_tree type_arg, type, type_type, type_name;
 
 	if (is_vararg_arg(type_args, idx))
 		return true;
 
 	type_arg = chain_index(idx - 1, type_args);
 	type = TREE_VALUE(type_arg);
+	gcc_assert(type != NULL_TREE);
+	type_type = TREE_TYPE(type);
+	gcc_assert(type_type != NULL_TREE);
+
+	type_name = TYPE_NAME(type_type);
+	if (type_name != NULL_TREE && TREE_CODE(type_name) == IDENTIFIER_NODE && !strcmp(TYPE_NAME_POINTER(type_type), "va_format"))
+		return true;
 
 	if (TREE_CODE(type) != POINTER_TYPE) {
 		error("%u. parameter of the %qE function must be a pointer", idx, *node);
 		return false;
 	}
 
-	if (!TYPE_READONLY(TREE_TYPE(type))) {
+	if (!TYPE_READONLY(type_type)) {
 		error("%u. parameter of the %qE function must be readonly", idx, *node);
 		return false;
 	}
 
-	if (TREE_THIS_VOLATILE(TREE_TYPE(type))) {
+	if (TREE_THIS_VOLATILE(type_type)) {
 		error("%u. parameter of the %qE function can't be volatile", idx, *node);
 		return false;
 	}
