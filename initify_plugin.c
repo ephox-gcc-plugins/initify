@@ -388,7 +388,11 @@ static bool is_same_vardecl(const_tree op, const_tree vardecl)
 		decl = SSA_NAME_VAR(op);
 	else
 		decl = op;
+
 	if (decl == NULL_TREE || !DECL_P(decl))
+		return false;
+
+	if (TREE_CODE(decl) != TREE_CODE(vardecl))
 		return false;
 
 	return DECL_NAME(decl) && !strcmp(DECL_NAME_POINTER(decl), DECL_NAME_POINTER(vardecl));
