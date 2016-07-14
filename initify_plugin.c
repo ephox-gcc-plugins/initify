@@ -560,9 +560,6 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 	if (TREE_CODE(node) != SSA_NAME)
 		goto true_out;
 
-	if (TREE_CODE(TREE_TYPE(node)) == INTEGER_TYPE)
-		goto true_out;
-
 	FOR_EACH_IMM_USE_FAST(use_p, imm_iter, node) {
 		const_gimple use_stmt = USE_STMT(use_p);
 
@@ -582,9 +579,15 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 			goto true_out;
 
 		case GIMPLE_CALL: {
+			unsigned int arg_count;
 			const gcall *call = as_a_const_gcall(use_stmt);
-			unsigned int arg_count = get_arg_count(call, node);
+			const_tree fndecl = gimple_call_fndecl(call);
 
+			gcc_assert(fndecl != NULL_TREE);
+			if (!strncmp(DECL_NAME_POINTER(fndecl), "is_kernel_rodata", 16))
+				return;
+
+			arg_count = get_arg_count(call, node);
 			if (!is_nocapture_arg(call, arg_count))
 				goto true_out;
 			return;
