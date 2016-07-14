@@ -474,11 +474,7 @@ static bool compare_ops(const_tree vardecl, tree op)
 
 static bool is_nocapture_arg(const gcall *stmt, unsigned int arg_count)
 {
-	const_tree arg;
 	tree fndecl;
-
-	arg = gimple_call_arg(stmt, arg_count - 1);
-	gcc_assert(TREE_CODE(TREE_TYPE(arg)) == POINTER_TYPE);
 
 	fndecl = gimple_call_fndecl(stmt);
 	if (fndecl == NULL_TREE)
