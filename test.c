@@ -124,6 +124,12 @@ static int __nocapture(1) print_simple_4(const char *format)
 	return printf(format, format, format);
 }
 
+static const char * __attribute__((nocapture(-1))) print_simple_5(const char *format)
+{
+	printf(format, format, format);
+	return format;
+}
+
 static int __nocapture(1, 3) print_simple_should_init(const char *format, const char *d, const char *str, const char *str2)
 {
 	print_simple_4("SHOULD_INIT");
@@ -169,6 +175,8 @@ void __init _1_YES_print_init(const char *str)
 	print_vararg_2("13. YES", "14. YES", "15. YES %s %s %s", "16. YES", "17. YES", "18. YES");
 	print_vararg_3("19. YES", "10. NO", "11. NO %s %s %s");
 	print_simple_3("22. YES", "23. YES");
+
+	print_simple_5("28. YES");
 }
 
 void _21_not_init(const char *str)

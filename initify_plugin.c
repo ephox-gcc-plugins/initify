@@ -27,6 +27,8 @@
  *  that specify the function argument(s) of const char* type to initify.
  *  If the marked argument is a vararg then the plugin initifies
  *  all vararg arguments.
+ *  There can be one negative value which means that the return of the function
+ *  will be followed to find it is a nocapture attribute or not.
  *
  * Usage:
  * $ make
@@ -137,9 +139,12 @@ static bool check_parameter(tree *node, tree type_args, int idx)
 static bool check_marked_parameters(tree *node, tree type_args, const_tree args, const_tree name)
 {
 	const_tree arg;
+	bool negative_val;
 
+	negative_val = false;
 	for (arg = args; arg; arg = TREE_CHAIN(arg)) {
 		int idx;
+		unsigned int abs_idx;
 		tree position = TREE_VALUE(arg);
 
 		if (TREE_CODE(position) != INTEGER_CST) {
@@ -147,16 +152,20 @@ static bool check_marked_parameters(tree *node, tree type_args, const_tree args,
 			return false;
 		}
 
-		if (tree_int_cst_lt(position, integer_zero_node)) {
-			error("%qE parameter of the %qE attribute less than 0 (fn: %qE)", position, name, *node);
-			return false;
+		idx = (int)tree_to_shwi(position);
+		if (negative_val && idx < 0) {
+			error("Only one negative attribute value is supported (attribute: %qE fn: %qE)", name, *node);
+			return NULL_TREE;
 		}
 
-		idx = (int)tree_to_shwi(position);
-		if (idx == 0)
+		if (idx < 0)
+			negative_val = true;
+
+		abs_idx = abs(idx);
+		if (abs_idx == 0)
 			continue;
 
-		if (!check_parameter(node, type_args, idx))
+		if (!check_parameter(node, type_args, abs_idx))
 			return false;
 	}
 	return true;
@@ -353,7 +362,7 @@ static bool search_attribute_param(const_tree attr, int fn_arg_count, int fntype
 		if (TREE_CODE(TREE_VALUE(attr_val)) == IDENTIFIER_NODE)
 			continue;
 
-		attr_arg_val = (int)tree_to_shwi(TREE_VALUE(attr_val));
+		attr_arg_val = (int)abs(tree_to_shwi(TREE_VALUE(attr_val)));
 		if (attr_arg_val == fn_arg_count)
 			return true;
 		if (attr_arg_val > fntype_arg_len && fn_arg_count >= attr_arg_val)
@@ -624,13 +633,18 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 			return;
 		}
 
+		case GIMPLE_RETURN:
+			if (has_negative_nocapture_attrib())
+				return;
+			goto true_out;
+
 		default:
 			debug_tree(node);
 			debug_gimple_stmt(use_stmt);
 			gcc_unreachable();
 		}
 	}
-	gcc_unreachable();
+	return;
 
 true_out:
 	*has_capture_use = true;
