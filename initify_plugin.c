@@ -406,6 +406,21 @@ static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
 	return search_attribute_param(attr, fn_arg_count, fntype_arg_len);
 }
 
+static bool has_negative_nocapture_attrib(void)
+{
+	const_tree attr, attr_val;
+
+	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(current_function_decl));
+	if (attr == NULL_TREE)
+		return false;
+
+	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
+		if (tree_int_cst_lt(TREE_VALUE(attr_val), integer_zero_node))
+			return true;
+	}
+	return false;
+}
+
 static bool is_same_vardecl(const_tree op, const_tree vardecl)
 {
 	const_tree decl;
