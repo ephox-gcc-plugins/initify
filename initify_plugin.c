@@ -323,6 +323,15 @@ static bool is_syscall(const_tree fn)
 	return false;
 }
 
+static bool allowed_builtins(const_tree fn)
+{
+	const char *name = DECL_NAME_POINTER(fn);
+
+	if (!strcmp(name, "__builtin_va_start"))
+		return true;
+	return false;
+}
+
 static bool search_attribute_param(const_tree attr, int fn_arg_count, int fntype_arg_len)
 {
 	const_tree attr_val;
@@ -348,6 +357,9 @@ static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
 	int fntype_arg_len;
 
 	if (is_syscall(fndecl))
+		return true;
+
+	if (DECL_BUILT_IN(fndecl) && allowed_builtins(fndecl))
 		return true;
 
 	fntype_arg_len = type_num_arguments(TREE_TYPE(fndecl));
@@ -484,12 +496,61 @@ static unsigned int get_arg_count(const gcall *call, const_tree arg)
 	gcc_unreachable();
 }
 
+static bool only_nocapture_call(const_tree decl)
+{
+	struct cgraph_edge *e;
+	struct cgraph_node *caller;
+	bool has_call = false;
+
+	gcc_assert(TREE_CODE(decl) == VAR_DECL);
+
+	caller = cgraph_get_node(current_function_decl);
+	for (e = caller->callees; e; e = e->next_callee) {
+		unsigned int idx;
+		const gcall *call = e->call_stmt;
+
+		for (idx = 0; idx < gimple_call_num_args(call);idx++) {
+			const_tree arg = gimple_call_arg(call, idx);
+
+			if (TREE_CODE(arg) != ADDR_EXPR)
+				continue;
+			if (TREE_OPERAND(arg, 0) != decl)
+				continue;
+			has_call = true;
+			if (!is_nocapture_arg(call, idx))
+				return false;
+		}
+	}
+
+	return has_call;
+}
+
+static bool local_struct_nocapture_use(const_tree node)
+{
+	const_tree decl;
+	enum tree_code code = TREE_CODE(node);
+
+	if (code == SSA_NAME)
+		return false;
+
+	if (code != COMPONENT_REF)
+		return false;
+
+	decl = TREE_OPERAND(node, 0);
+	gcc_assert(TREE_CODE(TREE_TYPE(decl)) == RECORD_TYPE);
+
+	return only_nocapture_call(decl);
+}
+
 static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visited, tree node)
 {
 	imm_use_iterator imm_iter;
 	use_operand_p use_p;
 
 	if (*has_capture_use)
+		return;
+
+	if (local_struct_nocapture_use(node))
 		return;
 
 	if (TREE_CODE(node) != SSA_NAME)
@@ -995,7 +1056,7 @@ static void verify_nocapture_functions(void)
 }
 
 /* Find and move constant strings to the proper init or exit read-only data section. */
-static unsigned int initify_execute(void)
+static unsigned int initify_function_transform(struct cgraph_node *node __unused)
 {
 	verify_nocapture_functions();
 
@@ -1005,21 +1066,9 @@ static unsigned int initify_execute(void)
 	find_local_str();
 	search_const_strs();
 
-	return 0;
-}
-
-#define PASS_NAME initify
-#define NO_GATE
-#define TODO_FLAGS_FINISH	TODO_dump_func | TODO_verify_ssa | \
-				TODO_verify_stmts | TODO_remove_unused_locals | \
-				TODO_cleanup_cfg | TODO_ggc_collect | \
-				TODO_verify_flow | TODO_update_ssa
-
-#include "gcc-generate-gimple-pass.h"
-
-static bool search_init_functions_gate(void)
-{
-	return search_init_exit_functions;
+	return TODO_dump_func | TODO_verify_ssa | TODO_verify_stmts
+		| TODO_remove_unused_locals | TODO_cleanup_cfg
+		| TODO_ggc_collect | TODO_verify_flow | TODO_update_ssa;
 }
 
 /*
@@ -1178,9 +1227,12 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 }
 
 /* Find all functions that can become __init/__exit functions */
-static unsigned int search_init_functions_execute(void)
+static unsigned int initify_execute(void)
 {
 	struct cgraph_node *node;
+
+	if (!search_init_exit_functions)
+		return 0;
 
 	if (flag_lto && !in_lto_p)
 		return 0;
@@ -1272,23 +1324,23 @@ static void initify_register_hooks(void)
 	node_duplication_hook_holder = cgraph_add_node_duplication_hook(&initify_node_duplication_hook, NULL);
 }
 
-static void search_init_functions_generate_summary(void)
+static void initify_generate_summary(void)
 {
 	initify_register_hooks();
 }
 
-static void search_init_functions_read_summary(void)
+static void initify_read_summary(void)
 {
 	initify_register_hooks();
 }
 
-#define PASS_NAME search_init_functions
+#define PASS_NAME initify
 #define NO_WRITE_SUMMARY
 #define NO_READ_OPTIMIZATION_SUMMARY
 #define NO_WRITE_OPTIMIZATION_SUMMARY
 #define NO_STMT_FIXUP
-#define NO_FUNCTION_TRANSFORM
 #define NO_VARIABLE_TRANSFORM
+#define NO_GATE
 
 #include "gcc-generate-ipa-pass.h"
 
@@ -1315,22 +1367,17 @@ static void initify_start_unit(void __unused *gcc_data, void __unused *user_data
 
 int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version *version)
 {
-	struct register_pass_info initify_pass_info, search_init_functions_info;
+	struct register_pass_info initify_info;
 	int i;
 	const int argc = plugin_info->argc;
 	bool enabled = true;
 	const struct plugin_argument * const argv = plugin_info->argv;
 	const char * const plugin_name = plugin_info->base_name;
 
-	initify_pass_info.pass				= make_initify_pass();
-	initify_pass_info.reference_pass_name		= "nrv";
-	initify_pass_info.ref_pass_instance_number	= 1;
-	initify_pass_info.pos_op			= PASS_POS_INSERT_AFTER;
-
-	search_init_functions_info.pass				= make_search_init_functions_pass();
-	search_init_functions_info.reference_pass_name		= "inline";
-	search_init_functions_info.ref_pass_instance_number	= 1;
-	search_init_functions_info.pos_op			= PASS_POS_INSERT_AFTER;
+	initify_info.pass				= make_initify_pass();
+	initify_info.reference_pass_name		= "inline";
+	initify_info.ref_pass_instance_number		= 1;
+	initify_info.pos_op				= PASS_POS_INSERT_AFTER;
 
 	if (!plugin_default_version_check(version, &gcc_version)) {
 		error(G_("incompatible gcc/plugin versions"));
@@ -1360,8 +1407,7 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 
 	register_callback(plugin_name, PLUGIN_INFO, NULL, &initify_plugin_info);
 	if (enabled) {
-		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &initify_pass_info);
-		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &search_init_functions_info);
+		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &initify_info);
 		register_callback(plugin_name, PLUGIN_START_UNIT, initify_start_unit, NULL);
 	}
 	register_callback(plugin_name, PLUGIN_ATTRIBUTES, register_attributes, NULL);
