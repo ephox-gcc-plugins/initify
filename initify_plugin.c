@@ -655,9 +655,9 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 
 		case GIMPLE_ASSIGN: {
 			tree lhs;
-+			gassign *assign = as_a_gassign(use_stmt);
+			gassign *assign = as_a_gassign(use_stmt);
 
-+			if (cast_to_integer_type(assign))
+			if (cast_to_integer_type(assign))
 				return;
 
 			lhs = gimple_assign_lhs(assign);
