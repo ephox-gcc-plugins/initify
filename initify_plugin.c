@@ -529,15 +529,16 @@ static bool only_nocapture_call(const_tree decl)
 		unsigned int idx;
 		const gcall *call = e->call_stmt;
 
-		for (idx = 0; idx < gimple_call_num_args(call);idx++) {
+		for (idx = 0; idx < gimple_call_num_args(call); idx++) {
 			const_tree arg = gimple_call_arg(call, idx);
 
 			if (TREE_CODE(arg) != ADDR_EXPR)
 				continue;
 			if (TREE_OPERAND(arg, 0) != decl)
 				continue;
+
 			has_call = true;
-			if (!is_nocapture_arg(call, idx))
+			if (!is_nocapture_arg(call, idx + 1))
 				return false;
 		}
 	}
