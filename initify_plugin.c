@@ -86,6 +86,10 @@ typedef struct pointer_set_t gimple_set;
 static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
 static bool has_capture_use_local_var(const_tree vardecl);
 
+#define FUNCTION_PTR_P(node) \
+	(TREE_CODE(TREE_TYPE(node)) == POINTER_TYPE && \
+	(TREE_CODE(TREE_TYPE(TREE_TYPE(node))) == FUNCTION_TYPE || \
+	TREE_CODE(TREE_TYPE(TREE_TYPE(node))) == METHOD_TYPE))
 
 static bool is_vararg_arg(tree arg_list, unsigned int num)
 {
@@ -353,18 +357,24 @@ static bool search_attribute_param(const_tree attr, int fn_arg_count, int fntype
 
 static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
 {
-	const_tree attr;
+	const_tree attr, type;
 	int fntype_arg_len;
+	bool fnptr = FUNCTION_PTR_P(fndecl);
 
-	if (is_syscall(fndecl))
+	if (!fnptr && is_syscall(fndecl))
 		return true;
 
-	if (DECL_BUILT_IN(fndecl) && allowed_builtins(fndecl))
+	if (!fnptr && DECL_BUILT_IN(fndecl) && allowed_builtins(fndecl))
 		return true;
 
-	fntype_arg_len = type_num_arguments(TREE_TYPE(fndecl));
+	if (fnptr)
+		type = TREE_TYPE(TREE_TYPE(fndecl));
+	else
+		type = TREE_TYPE(fndecl);
 
-	attr = lookup_attribute("format", TYPE_ATTRIBUTES(TREE_TYPE(fndecl)));
+	fntype_arg_len = type_num_arguments(type);
+
+	attr = lookup_attribute("format", TYPE_ATTRIBUTES(type));
 	if (attr != NULL_TREE && search_attribute_param(attr, fn_arg_count, fntype_arg_len))
 		return true;
 
@@ -464,16 +474,19 @@ static bool compare_ops(const_tree vardecl, tree op)
 
 static bool is_nocapture_arg(const gcall *stmt, unsigned int arg_count)
 {
-	const_tree arg, fndecl;
+	const_tree arg;
+	tree fndecl;
 
 	arg = gimple_call_arg(stmt, arg_count - 1);
 	gcc_assert(TREE_CODE(TREE_TYPE(arg)) == POINTER_TYPE);
 
 	fndecl = gimple_call_fndecl(stmt);
-	if (is_nocapture_param(fndecl, (int)arg_count))
-		return true;
+	if (fndecl == NULL_TREE)
+		fndecl = gimple_call_fn(stmt);
 
 	gcc_assert(fndecl != NULL_TREE);
+	if (is_nocapture_param(fndecl, (int)arg_count))
+		return true;
 
 	/*
 	 * These are potentially nocapture functions that must be checked
