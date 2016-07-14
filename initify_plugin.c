@@ -309,13 +309,15 @@ static bool set_init_exit_section(tree decl)
 /* Syscalls are always nocapture functions. */
 static bool is_syscall(const_tree fn)
 {
-	if (!strncmp(DECL_NAME_POINTER(fn), "sys_", 4))
+	const char *name = DECL_NAME_POINTER(fn);
+
+	if (!strncmp(name, "sys_", 4))
 		return true;
 
-	if (!strncmp(DECL_NAME_POINTER(fn), "sys32_", 6))
+	if (!strncmp(name, "sys32_", 6))
 		return true;
 
-	if (!strncmp(DECL_NAME_POINTER(fn), "compat_sys_", 11))
+	if (!strncmp(name, "compat_sys_", 11))
 		return true;
 
 	return false;
