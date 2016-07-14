@@ -354,7 +354,11 @@ static bool allowed_builtins(const_tree fn)
 	return false;
 }
 
-static bool search_attribute_param(const_tree attr, int fn_arg_count, int fntype_arg_len)
+enum attribute_type {
+	NOCAPTURE, PRINTF, BUILTINS, SYSCALL, NONE_ATTRIBUTE
+};
+
+static enum attribute_type search_attribute_param(const_tree attr, int fn_arg_count, int fntype_arg_len)
 {
 	const_tree attr_val;
 
@@ -366,24 +370,24 @@ static bool search_attribute_param(const_tree attr, int fn_arg_count, int fntype
 
 		attr_arg_val = (int)abs(tree_to_shwi(TREE_VALUE(attr_val)));
 		if (attr_arg_val == fn_arg_count)
-			return true;
+			return NOCAPTURE;
 		if (attr_arg_val > fntype_arg_len && fn_arg_count >= attr_arg_val)
-			return true;
+			return NOCAPTURE;
 	}
-	return false;
+	return NONE_ATTRIBUTE;
 }
 
-static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
+static enum attribute_type is_nocapture_param(const_tree fndecl, int fn_arg_count)
 {
 	const_tree attr, type;
 	int fntype_arg_len;
 	bool fnptr = FUNCTION_PTR_P(fndecl);
 
 	if (!fnptr && is_syscall(fndecl))
-		return true;
+		return SYSCALL;
 
 	if (!fnptr && DECL_BUILT_IN(fndecl) && allowed_builtins(fndecl))
-		return true;
+		return BUILTINS;
 
 	if (fnptr)
 		type = TREE_TYPE(TREE_TYPE(fndecl));
@@ -393,15 +397,15 @@ static bool is_nocapture_param(const_tree fndecl, int fn_arg_count)
 	fntype_arg_len = type_num_arguments(type);
 
 	attr = lookup_attribute("format", TYPE_ATTRIBUTES(type));
-	if (attr != NULL_TREE && search_attribute_param(attr, fn_arg_count, fntype_arg_len))
-		return true;
+	if (attr != NULL_TREE && search_attribute_param(attr, fn_arg_count, fntype_arg_len) != NONE_ATTRIBUTE)
+		return PRINTF;
 
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 	if (attr == NULL_TREE)
-		return false;
+		return NONE_ATTRIBUTE;
 
 	if (TREE_VALUE(attr) == NULL_TREE)
-		return true;
+		return NOCAPTURE;
 
 	return search_attribute_param(attr, fn_arg_count, fntype_arg_len);
 }
@@ -514,7 +518,7 @@ static bool is_nocapture_arg(const gcall *stmt, unsigned int arg_count)
 		fndecl = gimple_call_fn(stmt);
 
 	gcc_assert(fndecl != NULL_TREE);
-	if (is_nocapture_param(fndecl, (int)arg_count))
+	if (is_nocapture_param(fndecl, (int)arg_count) != NONE_ATTRIBUTE)
 		return true;
 
 	/*
@@ -1031,7 +1035,7 @@ static void search_var_param(gcall *stmt)
 		if (!TYPE_STRING_FLAG(type))
 			continue;
 		fndecl = gimple_call_fndecl(stmt);
-		if (!is_nocapture_param(fndecl, num + 1))
+		if (is_nocapture_param(fndecl, num + 1) == NONE_ATTRIBUTE)
 			continue;
 
 		visited = pointer_set_create();
@@ -1054,7 +1058,7 @@ static void search_str_param(gcall *stmt)
 			continue;
 
 		fndecl = gimple_call_fndecl(stmt);
-		if (is_nocapture_param(fndecl, num + 1))
+		if (is_nocapture_param(fndecl, num + 1) != NONE_ATTRIBUTE)
 			set_section_call_assign(stmt, arg, num);
 	}
 }
@@ -1115,7 +1119,7 @@ static void verify_nocapture_functions(void)
 	for (i = 0; i < len; i++) {
 		const_tree arg;
 
-		if (!is_nocapture_param(current_function_decl, i + 1))
+		if (is_nocapture_param(current_function_decl, i + 1) != NOCAPTURE)
 			continue;
 
 		arg = chain_index(i, arg_list);
@@ -1375,7 +1379,7 @@ static void initify_node_duplication_hook(struct cgraph_node *src, struct cgraph
 	gcc_assert(orig_decl_lst != NULL_TREE);
 
 	for (arg = orig_decl_lst; arg; arg = TREE_CHAIN(arg), orig_argnum++) {
-		if (!is_nocapture_param(orig_fndecl, orig_argnum))
+		if (is_nocapture_param(orig_fndecl, orig_argnum) == NONE_ATTRIBUTE)
 			continue;
 		if (orig_argnum_on_clone(dst, orig_argnum) == 0)
 			continue;
