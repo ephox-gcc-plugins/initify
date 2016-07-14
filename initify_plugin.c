@@ -574,6 +574,18 @@ static bool local_struct_nocapture_use(const_tree node)
 	return only_nocapture_call(decl);
 }
 
+static bool cast_to_integer_type(gassign *assign)
+{
+	const_tree lhs_type, lhs;
+
+	if (!gimple_assign_cast_p(assign))
+		return false;
+
+	lhs = gimple_assign_rhs1(assign);
+	lhs_type = TREE_TYPE(lhs);
+	return TYPE_MODE(lhs_type) != QImode;
+}
+
 static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visited, tree node)
 {
 	imm_use_iterator imm_iter;
@@ -589,7 +601,7 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 		goto true_out;
 
 	FOR_EACH_IMM_USE_FAST(use_p, imm_iter, node) {
-		const_gimple use_stmt = USE_STMT(use_p);
+		gimple use_stmt = USE_STMT(use_p);
 
 		if (use_stmt == NULL)
 			return;
@@ -622,8 +634,13 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 		}
 
 		case GIMPLE_ASSIGN: {
-			tree lhs = gimple_assign_lhs(use_stmt);
+			tree lhs;
++			gassign *assign = as_a_gassign(use_stmt);
 
++			if (cast_to_integer_type(assign))
+				return;
+
+			lhs = gimple_assign_lhs(assign);
 			has_capture_use_ssa_var(has_capture_use, use_visited, lhs);
 			return;
 		}
