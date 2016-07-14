@@ -349,6 +349,8 @@ static bool allowed_builtins(const_tree fn)
 
 	if (!strcmp(name, "__builtin_va_start"))
 		return true;
+	if (!strcmp(name, "__builtin_expect"))
+		return true;
 	return false;
 }
 
