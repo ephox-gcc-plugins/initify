@@ -613,6 +613,7 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 
 		switch (gimple_code(use_stmt)) {
 		case GIMPLE_COND:
+		case GIMPLE_SWITCH:
 			return;
 
 		case GIMPLE_ASM:
