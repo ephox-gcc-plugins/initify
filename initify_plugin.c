@@ -20,6 +20,7 @@
  * -fplugin-arg-initify_plugin-verbose
  * -fplugin-arg-initify_plugin-print_missing_attr
  * -fplugin-arg-initify_plugin-search_init_exit_functions
+ * -fplugin-arg-initify_plugin-enable_init_to_exit_moves
  *
  * Attribute: __attribute__((nocapture(x, y ...)))
  *  The nocapture gcc attribute can be on functions only.
@@ -42,20 +43,23 @@ int plugin_is_GPL_compatible;
 static struct plugin_info initify_plugin_info = {
 	.version	=	"20160701",
 	.help		=	"disable\tturn off the initify plugin\n"
-				 "verbose\tprint all initified strings and all"
-				 " functions which should be __init/__exit\n"
-				 "print_missing_attr\tprint functions which"
-				 " can be marked by nocapture attribute\n"
-				 "search_init_exit_functions\tsearch function"
-				 " which should be marked by __init or __exit"
-				 " attribute\n"
+				"verbose\tprint all initified strings and all"
+				" functions which should be __init/__exit\n"
+				"print_missing_attr\tprint functions which"
+				" can be marked by nocapture attribute\n"
+				"search_init_exit_functions\tfind functions"
+				" which should be marked by __init or __exit"
+				" attribute\n"
+				"enable_init_to_exit_moves\tmove a function"
+				" to the exit section if it is called by __init"
+				" and __exit functions too\n"
 };
 
 #define ARGNUM_NONE 0
-static bool verbose, print_missing_attr, search_init_exit_functions;
+static bool verbose, print_missing_attr, search_init_exit_functions, enable_init_to_exit_moves;
 
 enum section_type {
-	INIT, EXIT, NONE
+	INIT, EXIT, BOTH, NONE
 };
 
 enum attribute_type {
@@ -1285,6 +1289,30 @@ static unsigned int initify_function_transform(struct cgraph_node *node __unused
 		| TODO_ggc_collect | TODO_verify_flow | TODO_update_ssa;
 }
 
+static void __unused debug_print_section_type(struct cgraph_node *node)
+{
+	enum section_type section;
+
+	section = (enum section_type)(unsigned long)NODE_SYMBOL(node)->aux;
+	switch (section) {
+	case INIT:
+		fprintf(stderr, "init\n");
+		break;
+
+	case EXIT:
+		fprintf(stderr, "exit\n");
+		break;
+
+	case BOTH:
+		fprintf(stderr, "init and exit\n");
+		break;
+
+	case NONE:
+		fprintf(stderr, "none\n");
+		break;
+	}
+}
+
 /*
  * If the function is called by only __init/__exit functions then it can become
  * an __init/__exit function as well.
@@ -1329,16 +1357,21 @@ static bool inherit_section(struct cgraph_node *callee, struct cgraph_node *call
 	if (curfn_section == NONE)
 		curfn_section = (enum section_type)(unsigned long)NODE_SYMBOL(caller)->aux;
 
+	if (curfn_section == INIT && NODE_SYMBOL(callee)->aux == (void *)EXIT)
+		goto both_section;
+
 	if (curfn_section == EXIT && NODE_SYMBOL(callee)->aux == (void *)INIT)
-		goto set_section;
+		goto both_section;
 
 	if (!should_init_exit(callee))
 		return false;
 
 	gcc_assert(NODE_SYMBOL(callee)->aux == (void *)NONE);
-
-set_section:
 	NODE_SYMBOL(callee)->aux = (void *)curfn_section;
+	return true;
+
+both_section:
+	NODE_SYMBOL(callee)->aux = (void *)BOTH;
 	return true;
 }
 
@@ -1398,6 +1431,17 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	const char *section_name;
 	tree id, attr;
 	tree section_str, attr_args, fndecl = NODE_DECL(node);
+
+	/*
+	 * If the function is a candidate for both __init and __exit and enable_init_to_exit_moves is false
+	 * then these functions arent't moved to the exit section.
+	 */
+	if (NODE_SYMBOL(node)->aux == (void *)BOTH) {
+		if (enable_init_to_exit_moves)
+			NODE_SYMBOL(node)->aux = (void *)EXIT;
+		else
+			return;
+	}
 
 	if (NODE_SYMBOL(node)->aux == (void *)NONE)
 		return;
@@ -1532,6 +1576,10 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 		}
 		if (!strcmp(argv[i].key, "search_init_exit_functions")) {
 			search_init_exit_functions = true;
+			continue;
+		}
+		if (!strcmp(argv[i].key, "enable_init_to_exit_moves")) {
+			enable_init_to_exit_moves = true;
 			continue;
 		}
 
