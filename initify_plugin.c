@@ -125,7 +125,7 @@ static gimple initify_get_def_stmt(const_tree node)
 	return SSA_NAME_DEF_STMT(node);
 }
 
-static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
+static void search_constant_strings(bool *has_str_cst, gimple_set *visited, tree node);
 static bool has_capture_use_local_var(const_tree vardecl);
 static bool search_capture_ssa_use(gimple_set *visited_defs, tree node);
 
@@ -196,7 +196,7 @@ static bool check_marked_parameters(tree *node, tree type_args, const_tree args,
 		idx = (int)tree_to_shwi(position);
 		if (negative_val && idx < 0) {
 			error("Only one negative attribute value is supported (attribute: %qE fn: %qE)", name, *node);
-			return NULL_TREE;
+			return false;
 		}
 
 		if (idx < 0)
@@ -731,6 +731,102 @@ static bool is_call_arg_nocapture(gimple_set *visited_defs, const gcall *call, i
 	return is_stmt_nocapture_arg(call, arg_num);
 }
 
+/* Determine whether the function has at least one nocapture argument. */
+static bool has_nocapture_param(const_tree fndecl)
+{
+	const_tree attr;
+
+	if (fndecl == NULL_TREE)
+		return false;
+
+	if (is_syscall(fndecl))
+		return true;
+
+	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
+	if (attr == NULL_TREE)
+		attr = lookup_attribute("format", TYPE_ATTRIBUTES(TREE_TYPE(fndecl)));
+	return attr != NULL_TREE;
+}
+
+static void walk_def_stmt(bool *has_capture_use, gimple_set *visited, tree node)
+{
+	gimple def_stmt;
+	const_tree parm_decl;
+
+	if (*has_capture_use)
+		return;
+
+	if (TREE_CODE(node) != SSA_NAME)
+		goto true_out;
+
+	parm_decl = SSA_NAME_VAR(node);
+	if (parm_decl != NULL_TREE && TREE_CODE(parm_decl) == PARM_DECL)
+		return;
+
+	def_stmt = initify_get_def_stmt(node);
+	if (pointer_set_insert(visited, def_stmt))
+		return;
+
+	switch (gimple_code(def_stmt)) {
+	case GIMPLE_CALL: {
+		tree fndecl = gimple_call_fndecl(def_stmt);
+
+		if (fndecl == NULL_TREE)
+			fndecl = gimple_call_fn(def_stmt);
+
+		gcc_assert(fndecl != NULL_TREE);
+		if (has_nocapture_param(fndecl))
+			goto true_out;
+		return;
+	}
+
+	case GIMPLE_ASM:
+	case GIMPLE_ASSIGN:
+		goto true_out;
+
+	case GIMPLE_NOP:
+		return;
+
+	case GIMPLE_PHI: {
+		unsigned int i;
+
+		for (i = 0; i < gimple_phi_num_args(def_stmt); i++) {
+			tree arg = gimple_phi_arg_def(def_stmt, i);
+
+			walk_def_stmt(has_capture_use, visited, arg);
+		}
+		return;
+	}
+
+	default:
+		debug_gimple_stmt(def_stmt);
+		error("%s: unknown gimple code", __func__);
+		gcc_unreachable();
+	}
+	gcc_unreachable();
+
+true_out:
+	*has_capture_use = true;
+}
+
+static bool search_return_capture_use(const greturn *ret_stmt)
+{
+	tree_set *def_visited;
+	tree ret;
+	bool has_capture_use;
+
+	if (is_negative_nocapture_arg(current_function_decl, 0))
+		return false;
+
+	def_visited = tree_pointer_set_create();
+	ret = gimple_return_retval(ret_stmt);
+	has_capture_use = false;
+	walk_def_stmt(&has_capture_use, def_visited, ret);
+	pointer_set_destroy(def_visited);
+
+	return has_capture_use;
+}
+
 static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *visited_defs, tree_set *use_visited, tree node)
 {
 	imm_use_iterator imm_iter;
@@ -800,9 +896,9 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *visited_d
 		}
 
 		case GIMPLE_RETURN:
-			if (is_negative_nocapture_arg(current_function_decl, 0))
-				return;
-			goto true_out;
+			if (search_return_capture_use(as_a_const_greturn(use_stmt)))
+				goto true_out;
+			return;
 
 		default:
 			debug_tree(node);
@@ -854,6 +950,8 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 			goto true_out;
 
 		case GIMPLE_CALL:
+			if (i == 0)
+				break;
 			/* return, fndecl */
 			gcc_assert(i >= 3);
 			arg_num = i - 2;
@@ -878,9 +976,9 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 		}
 
 		case GIMPLE_RETURN:
-			if (is_negative_nocapture_arg(current_function_decl, 0))
-				break;
-			goto true_out;
+			if (search_return_capture_use(as_a_const_greturn(stmt)))
+				goto true_out;
+			break;
 		default:
 			debug_tree(vardecl);
 			debug_gimple_stmt(stmt);
@@ -1094,13 +1192,13 @@ static void set_section_phi(bool *has_str_cst, gimple_set *visited, gphi *stmt)
 		tree arg = gimple_phi_arg_def(stmt, i);
 
 		if (get_string_cst(arg) == NULL_TREE)
-			walk_def_stmt(has_str_cst, visited, arg);
+			search_constant_strings(has_str_cst, visited, arg);
 		else
 			initify_create_new_phi_arg(visited, ssa_var, stmt, i);
 	}
 }
 
-static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node)
+static void search_constant_strings(bool *has_str_cst, gimple_set *visited, tree node)
 {
 	gimple def_stmt;
 	const_tree parm_decl;
@@ -1137,7 +1235,7 @@ static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node)
 			goto false_out;
 
 		rhs1 = gimple_assign_rhs1(def_stmt);
-		walk_def_stmt(has_str_cst, visited, rhs1);
+		search_constant_strings(has_str_cst, visited, rhs1);
 		if (!*has_str_cst)
 			return;
 
@@ -1189,7 +1287,7 @@ static void search_var_param(gcall *stmt)
 			continue;
 
 		if (is_fndecl_nocapture_arg(fndecl, num + 1) != NONE_ATTRIBUTE)
-			walk_def_stmt(&has_str_cst, visited, arg);
+			search_constant_strings(&has_str_cst, visited, arg);
 	}
 
 	pointer_set_destroy(visited);
@@ -1220,23 +1318,6 @@ static void search_str_param(gcall *stmt)
 	}
 
 	pointer_set_destroy(visited);
-}
-
-/* Determine whether the function has at least one nocapture argument. */
-static bool has_nocapture_param(const_tree fndecl)
-{
-	const_tree attr;
-
-	if (fndecl == NULL_TREE)
-		return false;
-
-	if (is_syscall(fndecl))
-		return true;
-
-	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
-	if (attr == NULL_TREE)
-		attr = lookup_attribute("format", TYPE_ATTRIBUTES(TREE_TYPE(fndecl)));
-	return attr != NULL_TREE;
 }
 
 /* Search constant strings in arguments of nocapture functions. */
