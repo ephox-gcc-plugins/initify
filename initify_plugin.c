@@ -606,7 +606,7 @@ static bool compare_ops(const_tree vardecl, tree op)
 	return search_same_vardecl(op, vardecl);
 }
 
-static bool is_stmt_nocapture_arg(const gcall *stmt, unsigned int arg_num)
+static bool is_stmt_nocapture_arg(const gcall *stmt, int arg_num)
 {
 	tree fndecl;
 
@@ -615,7 +615,7 @@ static bool is_stmt_nocapture_arg(const gcall *stmt, unsigned int arg_num)
 		fndecl = gimple_call_fn(stmt);
 
 	gcc_assert(fndecl != NULL_TREE);
-	if (is_fndecl_nocapture_arg(fndecl, (int)arg_num) != NONE_ATTRIBUTE)
+	if (is_fndecl_nocapture_arg(fndecl, arg_num) != NONE_ATTRIBUTE)
 		return true;
 
 	/*
@@ -628,9 +628,9 @@ static bool is_stmt_nocapture_arg(const gcall *stmt, unsigned int arg_num)
 }
 
 /* Find the argument position of arg. */
-static unsigned int get_arg_num(const gcall *call, const_tree arg)
+static int get_arg_num(const gcall *call, const_tree arg)
 {
-	unsigned idx;
+	int idx;
 
 	for (idx = 0; idx < gimple_call_num_args(call); idx++) {
 		const_tree cur_arg = gimple_call_arg(call, idx);
@@ -655,7 +655,7 @@ static bool only_nocapture_call(const_tree decl)
 
 	caller = cgraph_get_node(current_function_decl);
 	for (e = caller->callees; e; e = e->next_callee) {
-		unsigned int idx;
+		int idx;
 		const gcall *call = as_a_const_gcall(e->call_stmt);
 
 		for (idx = 0; idx < gimple_call_num_args(call); idx++) {
@@ -716,7 +716,7 @@ static bool is_return_value_captured(gimple_set *visited_defs, const gcall *call
 }
 
 /* Check if arg_num is a nocapture argument. */
-static bool is_call_arg_nocapture(gimple_set *visited_defs, const gcall *call, unsigned int arg_num)
+static bool is_call_arg_nocapture(gimple_set *visited_defs, const gcall *call, int arg_num)
 {
 	tree fndecl = gimple_call_fndecl(call);
 
@@ -771,7 +771,7 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *visited_d
 
 		case GIMPLE_CALL: {
 			const gcall *call = as_a_const_gcall(use_stmt);
-			unsigned int arg_num = get_arg_num(call, node);
+			int arg_num = get_arg_num(call, node);
 
 			if (is_call_arg_nocapture(visited_defs, call, arg_num))
 				return;
@@ -832,7 +832,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 	gimple_set *visited_defs = pointer_set_create();
 
 	for (i = 0; i < gimple_num_ops(stmt); i++) {
-		unsigned int arg_num;
+		int arg_num;
 		tree op = *(gimple_op_ptr(stmt, i));
 
 		if (op == NULL_TREE)
@@ -1154,7 +1154,7 @@ false_out:
 /* Search constant strings assigned to variables. */
 static void search_var_param(gcall *stmt)
 {
-	unsigned int num;
+	int num;
 	gimple_set *visited = pointer_set_create();
 
 	pointer_set_insert(visited, stmt);
@@ -1188,7 +1188,7 @@ static void search_var_param(gcall *stmt)
 /* Search constant strings passed as arguments. */
 static void search_str_param(gcall *stmt)
 {
-	unsigned int num;
+	int num;
 	gimple_set *visited = pointer_set_create();
 
 	pointer_set_insert(visited, stmt);
