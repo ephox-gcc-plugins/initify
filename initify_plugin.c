@@ -262,9 +262,9 @@ static tree handle_nocapture_attribute(tree *node, tree name, tree args, int __u
 	}
 
 	default:
-			debug_tree(*node);
-			error("%s: %qE attribute only applies to functions", __func__, name);
-			return NULL_TREE;
+		debug_tree(*node);
+		error("%s: %qE attribute only applies to functions", __func__, name);
+		return NULL_TREE;
 	}
 
 	gcc_assert(type_args != NULL_TREE);
