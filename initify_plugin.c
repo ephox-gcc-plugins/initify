@@ -672,6 +672,7 @@ static bool only_nocapture_call(const_tree decl)
 		}
 	}
 
+	gcc_assert(has_call);
 	return has_call;
 }
 
