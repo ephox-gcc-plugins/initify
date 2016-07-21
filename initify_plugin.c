@@ -474,6 +474,9 @@ static enum attribute_type is_nocapture_param(const_tree fndecl, int fn_arg_coun
 	if (attr != NULL_TREE && search_attribute_param(fndecl, attr, fn_arg_count, fntype_arg_len) != NONE_ATTRIBUTE)
 		return PRINTF;
 
+	if (fnptr)
+		return NONE_ATTRIBUTE;
+
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 	if (attr == NULL_TREE)
 		return NONE_ATTRIBUTE;
@@ -489,6 +492,9 @@ static bool is_negative_nocapture_arg(const_tree fndecl, int arg_count)
 	const_tree attr, attr_val;
 
 	gcc_assert(arg_count <= 0);
+
+	if (FUNCTION_PTR_P(fndecl))
+		return false;
 
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 	if (attr == NULL_TREE)
@@ -701,10 +707,13 @@ static bool capture_return_value_use(gimple_set *visited_defs, const gcall *call
 
 static bool is_nocapture_call_arg(gimple_set *visited_defs, const gcall *call, unsigned int arg_count)
 {
-	const_tree fndecl = gimple_call_fndecl(call);
+	tree fndecl = gimple_call_fndecl(call);
 
+	if (fndecl == NULL_TREE)
+		fndecl = gimple_call_fn(call);
 	gcc_assert(fndecl != NULL_TREE);
-	if (!strncmp(DECL_NAME_POINTER(fndecl), "is_kernel_rodata", 16))
+
+	if (!FUNCTION_PTR_P(fndecl) && !strncmp(DECL_NAME_POINTER(fndecl), "is_kernel_rodata", 16))
 		return true;
 
 	if (is_negative_nocapture_arg(fndecl, -arg_count) && capture_return_value_use(visited_defs, call))
