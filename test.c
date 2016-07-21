@@ -102,7 +102,7 @@ int __printf(1, 3) __nocapture(2) print_vararg_2(const char *d, const char *str,
 	return printf(d);
 }
 
-int __printf(2, 3) print_vararg_3(const char *d, const char *str, ...)
+int __printf(1, 0) print_vararg_3(const char *d, const char *str, ...)
 {
 	va_list args;
 
@@ -157,9 +157,6 @@ bool __init _1_YES_print_init(const char *str)
 	unsigned int i;
 	const char *local_str, *local_str_2, *str_3, *local_str_3;
 	int (*print_fn)(const char *format);
-	static const char static_str[] = "NO_cicamica";
-
-	printf("1. NO %s %s\n", static_str, str);
 
 	if (!str) {
 		local_str = "24. YES";
@@ -179,8 +176,7 @@ bool __init _1_YES_print_init(const char *str)
 	printf(local_str_2);
 	print_simple_2(__func__);
 	print_simple_should_init("2. YES %s", "2. NO", "3. YES\n", "3. NO");
-//	print_simple_should_init("27. YES %s", "21. NO", "38. YES\n", "31. NO");
-	printf("4. NO\n");
+	print_simple_should_init("27. YES %s", "21. NO", "38. YES\n", "31. NO");
 	print_vararg("5. NO", "6. NO", "4. YES %s %s %s", "5. YES", "6. YES", "7. YES");
 	print_vararg_no_vararg("7. NO", "8. YES", "9. YES %s", "8. NO");
 	print_format_and_vararg("10. YES", "9. NO", "11. YES %s %d", "12. YES");
@@ -235,7 +231,7 @@ void no_print(const char *str)
 	printf("%s\n", str);
 }
 
-void __init _12_NO_func(void)
+void _12_NO_func(void)
 {
 	printf("%s\n", __func__);
 	no_print(__func__);

@@ -58,6 +58,11 @@ enum section_type {
 	INIT, EXIT, NONE
 };
 
+enum attribute_type {
+	NOCAPTURE, PRINTF, BUILTINS, SYSCALL, NONE_ATTRIBUTE
+};
+
+
 #if BUILDING_GCC_VERSION >= 5000
 typedef struct hash_set<const_gimple> gimple_set;
 
@@ -363,11 +368,7 @@ static bool allowed_builtins(const_tree fn)
 	return false;
 }
 
-enum attribute_type {
-	NOCAPTURE, PRINTF, BUILTINS, SYSCALL, NONE_ATTRIBUTE
-};
-
-static enum attribute_type search_attribute_param(const_tree attr, int fn_arg_count, int fntype_arg_len)
+static enum attribute_type search_argnum_in_attribute_params(const_tree attr, int fn_arg_count, int fntype_arg_len)
 {
 	const_tree attr_val;
 
@@ -383,6 +384,47 @@ static enum attribute_type search_attribute_param(const_tree attr, int fn_arg_co
 		if (attr_arg_val > fntype_arg_len && fn_arg_count >= attr_arg_val)
 			return NOCAPTURE;
 	}
+	return NONE_ATTRIBUTE;
+}
+
+static enum attribute_type search_attribute_param(const_tree fndecl, const_tree attr, int fn_arg_count, int fntype_arg_len)
+{
+	const_tree orig_decl, clone_arg, orig_arg;
+	tree decl_list, orig_decl_list;
+	enum attribute_type orig_attribute;
+	struct cgraph_node *node = cgraph_get_node(fndecl);
+
+	orig_attribute = search_argnum_in_attribute_params(attr, fn_arg_count, fntype_arg_len);
+	if (orig_attribute == NONE_ATTRIBUTE)
+		return orig_attribute;
+
+	gcc_assert(node);
+	if (node->clone_of && node->clone.tree_map)
+		gcc_assert(!node->clone.args_to_skip);
+
+	if (!DECL_ARTIFICIAL(fndecl) && DECL_ABSTRACT_ORIGIN(fndecl) == NULL_TREE)
+		return orig_attribute;
+
+	orig_decl = DECL_ABSTRACT_ORIGIN(fndecl);
+	gcc_assert(orig_decl != NULL_TREE);
+
+	decl_list = DECL_ARGUMENTS(fndecl);
+	orig_decl_list = DECL_ARGUMENTS(orig_decl);
+
+	if (decl_list == NULL_TREE || orig_decl_list == NULL_TREE)
+		return NONE_ATTRIBUTE;
+
+	if (list_length(decl_list) == list_length(orig_decl_list))
+		return orig_attribute;
+
+	clone_arg = chain_index(fn_arg_count - 1, decl_list);
+	gcc_assert(clone_arg != NULL_TREE);
+
+	orig_arg = chain_index(fn_arg_count - 1, orig_decl_list);
+	gcc_assert(orig_arg != NULL_TREE);
+
+	if (!strcmp(DECL_NAME_POINTER(clone_arg), DECL_NAME_POINTER(orig_arg)))
+		return orig_attribute;
 	return NONE_ATTRIBUTE;
 }
 
@@ -406,7 +448,7 @@ static enum attribute_type is_nocapture_param(const_tree fndecl, int fn_arg_coun
 	fntype_arg_len = type_num_arguments(type);
 
 	attr = lookup_attribute("format", TYPE_ATTRIBUTES(type));
-	if (attr != NULL_TREE && search_attribute_param(attr, fn_arg_count, fntype_arg_len) != NONE_ATTRIBUTE)
+	if (attr != NULL_TREE && search_attribute_param(fndecl, attr, fn_arg_count, fntype_arg_len) != NONE_ATTRIBUTE)
 		return PRINTF;
 
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
@@ -416,7 +458,7 @@ static enum attribute_type is_nocapture_param(const_tree fndecl, int fn_arg_coun
 	if (TREE_VALUE(attr) == NULL_TREE)
 		return NOCAPTURE;
 
-	return search_attribute_param(attr, fn_arg_count, fntype_arg_len);
+	return search_attribute_param(fndecl, attr, fn_arg_count, fntype_arg_len);
 }
 
 static bool is_negative_nocapture_arg(const_tree fndecl, int arg_count)
