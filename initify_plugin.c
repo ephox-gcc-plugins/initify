@@ -724,9 +724,6 @@ static bool is_call_arg_nocapture(gimple_set *visited_defs, const gcall *call, i
 		fndecl = gimple_call_fn(call);
 	gcc_assert(fndecl != NULL_TREE);
 
-	if (!FUNCTION_PTR_P(fndecl) && !strncmp(DECL_NAME_POINTER(fndecl), "is_kernel_rodata", 16))
-		return true;
-
 	if (is_negative_nocapture_arg(fndecl, -arg_num) && is_return_value_captured(visited_defs, call))
 		return false;
 
