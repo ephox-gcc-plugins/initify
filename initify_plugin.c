@@ -85,8 +85,31 @@ static inline void pointer_set_destroy(gimple_set *visited)
 {
 	delete visited;
 }
+
+typedef struct hash_set<const_tree> tree_set;
+
+static inline bool pointer_set_insert(tree_set *visited, const_tree node)
+{
+	return visited->add(node);
+}
+
+static inline tree_set* tree_pointer_set_create(void)
+{
+	return new hash_set<const_tree>;
+}
+
+static inline void pointer_set_destroy(tree_set *visited)
+{
+	delete visited;
+}
 #else
 typedef struct pointer_set_t gimple_set;
+typedef struct pointer_set_t tree_set;
+
+static inline tree_set *tree_pointer_set_create(void)
+{
+	return pointer_set_create();
+}
 #endif
 
 static gimple initify_get_def_stmt(const_tree node)
@@ -100,7 +123,7 @@ static gimple initify_get_def_stmt(const_tree node)
 
 static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
 static bool has_capture_use_local_var(const_tree vardecl);
-static bool search_capture_ssa_use(tree node);
+static bool search_capture_ssa_use(gimple_set *visited_defs, tree node);
 
 #define FUNCTION_PTR_P(node) \
 	(TREE_CODE(TREE_TYPE(node)) == POINTER_TYPE && \
@@ -668,15 +691,15 @@ static bool cast_to_integer_type(gassign *assign)
 	return TYPE_MODE(lhs_type) != QImode;
 }
 
-static bool capture_return_value_use(const gcall *call)
+static bool capture_return_value_use(gimple_set *visited_defs, const gcall *call)
 {
-	tree ret = gimple_return_retval(call);
+	tree ret = gimple_call_lhs(call);
 
 	gcc_assert(ret != NULL_TREE);
-	return search_capture_ssa_use(ret);
+	return search_capture_ssa_use(visited_defs, ret);
 }
 
-static bool is_nocapture_call_arg(const gcall *call, unsigned int arg_count)
+static bool is_nocapture_call_arg(gimple_set *visited_defs, const gcall *call, unsigned int arg_count)
 {
 	const_tree fndecl = gimple_call_fndecl(call);
 
@@ -684,16 +707,19 @@ static bool is_nocapture_call_arg(const gcall *call, unsigned int arg_count)
 	if (!strncmp(DECL_NAME_POINTER(fndecl), "is_kernel_rodata", 16))
 		return true;
 
-	if (is_negative_nocapture_arg(fndecl, -arg_count) && capture_return_value_use(call))
+	if (is_negative_nocapture_arg(fndecl, -arg_count) && capture_return_value_use(visited_defs, call))
 		return false;
 
 	return is_nocapture_arg(call, arg_count);
 }
 
-static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visited, tree node)
+static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *visited_defs, tree_set *use_visited, tree node)
 {
 	imm_use_iterator imm_iter;
 	use_operand_p use_p;
+
+	if (pointer_set_insert(use_visited, node))
+		return;
 
 	if (*has_capture_use)
 		return;
@@ -712,7 +738,7 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 		if (is_gimple_debug(use_stmt))
 			continue;
 
-		if (pointer_set_insert(use_visited, use_stmt))
+		if (pointer_set_contains(visited_defs, use_stmt))
 			continue;
 
 		switch (gimple_code(use_stmt)) {
@@ -727,7 +753,7 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 			const gcall *call = as_a_const_gcall(use_stmt);
 			unsigned int arg_count = get_arg_count(call, node);
 
-			if (is_nocapture_call_arg(call, arg_count))
+			if (is_nocapture_call_arg(visited_defs, call, arg_count))
 				return;
 			goto true_out;
 		}
@@ -740,14 +766,14 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 				return;
 
 			lhs = gimple_assign_lhs(assign);
-			has_capture_use_ssa_var(has_capture_use, use_visited, lhs);
+			has_capture_use_ssa_var(has_capture_use, visited_defs, use_visited, lhs);
 			return;
 		}
 
 		case GIMPLE_PHI: {
 			tree result = gimple_phi_result(use_stmt);
 
-			has_capture_use_ssa_var(has_capture_use, use_visited, result);
+			has_capture_use_ssa_var(has_capture_use, visited_defs, use_visited, result);
 			return;
 		}
 
@@ -768,13 +794,13 @@ true_out:
 	*has_capture_use = true;
 }
 
-static bool search_capture_ssa_use(tree node)
+static bool search_capture_ssa_use(gimple_set *visited_defs, tree node)
 {
-	gimple_set *use_visited;
+	tree_set *use_visited;
 	bool has_capture_use = false;
 
-	use_visited = pointer_set_create();
-	has_capture_use_ssa_var(&has_capture_use, use_visited, node);
+	use_visited = tree_pointer_set_create();
+	has_capture_use_ssa_var(&has_capture_use, visited_defs, use_visited, node);
 	pointer_set_destroy(use_visited);
 
 	return has_capture_use;
@@ -783,6 +809,7 @@ static bool search_capture_ssa_use(tree node)
 static bool search_capture_use(const_tree vardecl, gimple stmt)
 {
 	unsigned int i;
+	gimple_set *visited_defs = pointer_set_create();
 
 	for (i = 0; i < gimple_num_ops(stmt); i++) {
 		unsigned int arg_count;
@@ -802,36 +829,42 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 
 		case GIMPLE_ASM:
 			gcc_assert(get_init_exit_section(vardecl) == NONE);
-			return true;
+			goto true_out;
 
 		case GIMPLE_CALL:
 			/* return, fndecl */
 			gcc_assert(i >= 3);
 			arg_count = i - 2;
 
-			if (is_nocapture_call_arg(as_a_const_gcall(stmt), arg_count))
+			if (is_nocapture_call_arg(visited_defs, as_a_const_gcall(stmt), arg_count))
 				break;
 			gcc_assert(get_init_exit_section(vardecl) == NONE);
-			return true;
+			goto true_out;
 
 		case GIMPLE_ASSIGN:
-			if (!search_capture_ssa_use(gimple_assign_lhs(stmt)))
+			if (!search_capture_ssa_use(visited_defs, gimple_assign_lhs(stmt)))
 				break;
 			gcc_assert(get_init_exit_section(vardecl) == NONE);
-			return true;
+			goto true_out;
 
 		case GIMPLE_RETURN:
 			if (is_negative_nocapture_arg(current_function_decl, 0))
 				break;
-			return true;
+			goto true_out;
 		default:
 			debug_tree(vardecl);
 			debug_gimple_stmt(stmt);
 			gcc_unreachable();
 		}
-
 	}
+
+	pointer_set_destroy(visited_defs);
 	return false;
+
+true_out:
+	pointer_set_destroy(visited_defs);
+	return true;
+
 }
 
 static bool is_in_capture_init(const_tree vardecl)
@@ -985,7 +1018,7 @@ static tree initify_create_new_var(tree type)
 	return new_var;
 }
 
-static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i)
+static void initify_create_new_phi_arg(gimple_set *visited_defs, tree ssa_var, gphi *stmt, unsigned int i)
 {
 	gassign *assign;
 	gimple_stmt_iterator gsi;
@@ -996,7 +1029,7 @@ static void initify_create_new_phi_arg(tree ssa_var, gphi *stmt, unsigned int i)
 
 	arg = gimple_phi_arg_def(stmt, i);
 
-	if (search_capture_ssa_use(arg))
+	if (search_capture_ssa_use(visited_defs, arg))
 		return;
 
 	decl = create_decl(arg);
@@ -1032,7 +1065,7 @@ static void set_section_phi(bool *has_str_cst, gimple_set *visited, gphi *stmt)
 		if (get_string_cst(arg) == NULL_TREE)
 			walk_def_stmt(has_str_cst, visited, arg);
 		else
-			initify_create_new_phi_arg(ssa_var, stmt, i);
+			initify_create_new_phi_arg(visited, ssa_var, stmt, i);
 	}
 }
 
@@ -1077,7 +1110,7 @@ static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node)
 		if (!*has_str_cst)
 			return;
 
-		if (search_capture_ssa_use(node))
+		if (search_capture_ssa_use(visited, node))
 			goto false_out;
 
 		str = get_string_cst(rhs1);
@@ -1101,9 +1134,11 @@ false_out:
 static void search_var_param(gcall *stmt)
 {
 	unsigned int num;
+	gimple_set *visited = pointer_set_create();
+
+	pointer_set_insert(visited, stmt);
 
 	for (num = 0; num < gimple_call_num_args(stmt); num++) {
-		gimple_set *visited;
 		const_tree type, fndecl;
 		bool has_str_cst = true;
 		tree str, arg = gimple_call_arg(stmt, num);
@@ -1119,21 +1154,23 @@ static void search_var_param(gcall *stmt)
 			continue;
 
 		fndecl = gimple_call_fndecl(stmt);
-		if (is_negative_nocapture_arg(fndecl, -(num + 1)) && capture_return_value_use(stmt))
-			continue;
-		if (is_nocapture_param(fndecl, num + 1) == NONE_ATTRIBUTE)
+		if (is_negative_nocapture_arg(fndecl, -(num + 1)) && capture_return_value_use(visited, stmt))
 			continue;
 
-		visited = pointer_set_create();
-		walk_def_stmt(&has_str_cst, visited, arg);
-		pointer_set_destroy(visited);
+		if (is_nocapture_param(fndecl, num + 1) != NONE_ATTRIBUTE)
+			walk_def_stmt(&has_str_cst, visited, arg);
 	}
+
+	pointer_set_destroy(visited);
 }
 
 /* Search constant strings passed as arguments. */
 static void search_str_param(gcall *stmt)
 {
 	unsigned int num;
+	gimple_set *visited = pointer_set_create();
+
+	pointer_set_insert(visited, stmt);
 
 	for (num = 0; num < gimple_call_num_args(stmt); num++) {
 		const_tree fndecl;
@@ -1144,12 +1181,14 @@ static void search_str_param(gcall *stmt)
 			continue;
 
 		fndecl = gimple_call_fndecl(stmt);
-		if (is_negative_nocapture_arg(fndecl, -(num + 1)) && capture_return_value_use(stmt))
+		if (is_negative_nocapture_arg(fndecl, -(num + 1)) && capture_return_value_use(visited, stmt))
 			continue;
 
 		if (is_nocapture_param(fndecl, num + 1) != NONE_ATTRIBUTE)
 			set_section_call_assign(stmt, arg, num);
 	}
+
+	pointer_set_destroy(visited);
 }
 
 static bool has_nocapture_param(const_tree fndecl)
