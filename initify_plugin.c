@@ -56,7 +56,8 @@ static struct plugin_info initify_plugin_info = {
 };
 
 #define ARGNUM_NONE 0
-static bool verbose, print_missing_attr, search_init_exit_functions, enable_init_to_exit_moves;
+static bool verbose, print_missing_attr, search_init_exit_functions;
+static bool enable_init_to_exit_moves;
 
 enum section_type {
 	INIT, EXIT, BOTH, NONE
@@ -125,7 +126,8 @@ static gimple initify_get_def_stmt(const_tree node)
 	return SSA_NAME_DEF_STMT(node);
 }
 
-static void search_constant_strings(bool *has_str_cst, gimple_set *visited, tree node);
+static void search_constant_strings(bool *has_str_cst, gimple_set *visited,
+					tree node);
 static bool has_capture_use_local_var(const_tree vardecl);
 static bool search_capture_ssa_use(gimple_set *visited_defs, tree node);
 
@@ -156,28 +158,33 @@ static bool check_parameter(tree *node, tree type_args, int idx)
 	gcc_assert(type_type != NULL_TREE);
 
 	type_name = TYPE_NAME(type_type);
-	if (type_name != NULL_TREE && TREE_CODE(type_name) == IDENTIFIER_NODE && !strcmp(TYPE_NAME_POINTER(type_type), "va_format"))
+	if (type_name != NULL_TREE && TREE_CODE(type_name) == IDENTIFIER_NODE
+		&& !strcmp(TYPE_NAME_POINTER(type_type), "va_format"))
 		return true;
 
 	if (TREE_CODE(type) != POINTER_TYPE) {
-		error("%u. parameter of the %qE function must be a pointer", idx, *node);
+		error("%u. parameter of the %qE function must be a pointer",
+								idx, *node);
 		return false;
 	}
 
 	if (!TYPE_READONLY(type_type)) {
-		error("%u. parameter of the %qE function must be readonly", idx, *node);
+		error("%u. parameter of the %qE function must be readonly",
+								idx, *node);
 		return false;
 	}
 
 	if (TREE_THIS_VOLATILE(type_type)) {
-		error("%u. parameter of the %qE function can't be volatile", idx, *node);
+		error("%u. parameter of the %qE function can't be volatile",
+								idx, *node);
 		return false;
 	}
 
 	return true;
 }
 
-static bool check_marked_parameters(tree *node, tree type_args, const_tree args, const_tree name)
+static bool check_marked_parameters(tree *node, tree type_args, const_tree args,
+								const_tree name)
 {
 	const_tree arg;
 	bool negative_val;
@@ -189,13 +196,15 @@ static bool check_marked_parameters(tree *node, tree type_args, const_tree args,
 		tree position = TREE_VALUE(arg);
 
 		if (TREE_CODE(position) != INTEGER_CST) {
-			error("%qE parameter of the %qE attribute isn't an integer (fn: %qE)", position, name, *node);
+			error("%qE parameter of the %qE attribute isn't an integer (fn: %qE)",
+							position, name, *node);
 			return false;
 		}
 
 		idx = (int)tree_to_shwi(position);
 		if (negative_val && idx < 0) {
-			error("Only one negative attribute value is supported (attribute: %qE fn: %qE)", name, *node);
+			error("Only one negative attribute value is supported (attribute: %qE fn: %qE)",
+								name, *node);
 			return false;
 		}
 
@@ -399,7 +408,8 @@ static bool allowed_builtins(const_tree fn)
 	return false;
 }
 
-static enum attribute_type search_argnum_in_attribute_params(const_tree attr, int fn_arg_num, int fntype_arg_len)
+static enum attribute_type search_argnum_in_attribute_params(const_tree attr,
+					int fn_arg_num, int fntype_arg_len)
 {
 	const_tree attr_val;
 
@@ -418,15 +428,17 @@ static enum attribute_type search_argnum_in_attribute_params(const_tree attr, in
 	return NONE_ATTRIBUTE;
 }
 
-/* Check that fn_arg_num is a nocapture argument, handle cloned functions too. */
-static enum attribute_type lookup_nocapture_argument(const_tree fndecl, const_tree attr, int fn_arg_num, int fntype_arg_len)
+/* Check that fn_arg_num is a nocapture argument, handle cloned functions too.*/
+static enum attribute_type lookup_nocapture_argument(const_tree fndecl,
+		const_tree attr, int fn_arg_num, int fntype_arg_len)
 {
 	const_tree orig_decl, clone_arg, orig_arg;
 	tree decl_list, orig_decl_list;
 	enum attribute_type orig_attribute;
 	struct cgraph_node *node = cgraph_get_node(fndecl);
 
-	orig_attribute = search_argnum_in_attribute_params(attr, fn_arg_num, fntype_arg_len);
+	orig_attribute = search_argnum_in_attribute_params(attr, fn_arg_num,
+							fntype_arg_len);
 	if (orig_attribute == NONE_ATTRIBUTE)
 		return orig_attribute;
 
@@ -434,7 +446,8 @@ static enum attribute_type lookup_nocapture_argument(const_tree fndecl, const_tr
 	if (node->clone_of && node->clone.tree_map)
 		gcc_assert(!node->clone.args_to_skip);
 
-	if (!DECL_ARTIFICIAL(fndecl) && DECL_ABSTRACT_ORIGIN(fndecl) == NULL_TREE)
+	if (!DECL_ARTIFICIAL(fndecl)
+		&& DECL_ABSTRACT_ORIGIN(fndecl) == NULL_TREE)
 		return orig_attribute;
 
 	orig_decl = DECL_ABSTRACT_ORIGIN(fndecl);
@@ -461,7 +474,8 @@ static enum attribute_type lookup_nocapture_argument(const_tree fndecl, const_tr
 }
 
 /* Check whether the function argument is nocapture. */
-static enum attribute_type is_fndecl_nocapture_arg(const_tree fndecl, int fn_arg_num)
+static enum attribute_type is_fndecl_nocapture_arg(const_tree fndecl,
+							int fn_arg_num)
 {
 	const_tree attr, type;
 	int fntype_arg_len;
@@ -481,7 +495,9 @@ static enum attribute_type is_fndecl_nocapture_arg(const_tree fndecl, int fn_arg
 	fntype_arg_len = type_num_arguments(type);
 
 	attr = lookup_attribute("format", TYPE_ATTRIBUTES(type));
-	if (attr != NULL_TREE && lookup_nocapture_argument(fndecl, attr, fn_arg_num, fntype_arg_len) != NONE_ATTRIBUTE)
+	if (attr != NULL_TREE &&
+		lookup_nocapture_argument(fndecl, attr, fn_arg_num,
+					fntype_arg_len) != NONE_ATTRIBUTE)
 		return PRINTF;
 
 	if (fnptr)
@@ -494,7 +510,8 @@ static enum attribute_type is_fndecl_nocapture_arg(const_tree fndecl, int fn_arg
 	if (TREE_VALUE(attr) == NULL_TREE)
 		return NOCAPTURE;
 
-	return lookup_nocapture_argument(fndecl, attr, fn_arg_num, fntype_arg_len);
+	return lookup_nocapture_argument(fndecl, attr, fn_arg_num,
+							fntype_arg_len);
 }
 
 /* Check whether arg_num is a nocapture argument that can be returned. */
@@ -511,10 +528,13 @@ static bool is_negative_nocapture_arg(const_tree fndecl, int arg_num)
 	if (attr == NULL_TREE)
 		return false;
 
-	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
+	for (attr_val = TREE_VALUE(attr); attr_val;
+					attr_val = TREE_CHAIN(attr_val)) {
 		int attr_arg_val;
 
-		if (arg_num == 0 && tree_int_cst_lt(TREE_VALUE(attr_val), integer_zero_node))
+		if (arg_num == 0 &&
+			tree_int_cst_lt(TREE_VALUE(attr_val),
+							integer_zero_node))
 			return true;
 
 		attr_arg_val = (int)tree_to_shwi(TREE_VALUE(attr_val));
@@ -542,7 +562,8 @@ static bool is_same_vardecl(const_tree op, const_tree vardecl)
 	if (TREE_CODE(decl) != TREE_CODE(vardecl))
 		return false;
 
-	return DECL_NAME(decl) && !strcmp(DECL_NAME_POINTER(decl), DECL_NAME_POINTER(vardecl));
+	return DECL_NAME(decl) &&
+		!strcmp(DECL_NAME_POINTER(decl), DECL_NAME_POINTER(vardecl));
 }
 
 static bool search_same_vardecl(const_tree value, const_tree vardecl)
@@ -626,7 +647,8 @@ static bool is_stmt_nocapture_arg(const gcall *stmt, int arg_num)
 	 *  manually.
 	 */
 	if (print_missing_attr)
-		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n", fndecl, arg_num);
+		inform(gimple_location(stmt), "nocapture attribute is missing (fn: %E, arg: %u)\n",
+							fndecl, arg_num);
 	return false;
 }
 
@@ -697,7 +719,10 @@ static bool is_va_format_use_nocapture(const_tree node)
 	return only_nocapture_call(decl);
 }
 
-/* If there is a cast to integer (from const char) then it is a nocapture data flow */
+/*
+ * If there is a cast to integer (from const char) then
+ * it is a nocapture data flow.
+ */
 static bool is_cast_to_integer_type(gassign *assign)
 {
 	const_tree lhs_type, lhs;
@@ -711,7 +736,8 @@ static bool is_cast_to_integer_type(gassign *assign)
 }
 
 /* Search the uses of a return value. */
-static bool is_return_value_captured(gimple_set *visited_defs, const gcall *call)
+static bool is_return_value_captured(gimple_set *visited_defs,
+							const gcall *call)
 {
 	tree ret = gimple_call_lhs(call);
 
@@ -720,7 +746,8 @@ static bool is_return_value_captured(gimple_set *visited_defs, const gcall *call
 }
 
 /* Check if arg_num is a nocapture argument. */
-static bool is_call_arg_nocapture(gimple_set *visited_defs, const gcall *call, int arg_num)
+static bool is_call_arg_nocapture(gimple_set *visited_defs, const gcall *call,
+								int arg_num)
 {
 	tree fndecl = gimple_call_fndecl(call);
 
@@ -728,7 +755,8 @@ static bool is_call_arg_nocapture(gimple_set *visited_defs, const gcall *call, i
 		fndecl = gimple_call_fn(call);
 	gcc_assert(fndecl != NULL_TREE);
 
-	if (is_negative_nocapture_arg(fndecl, -arg_num) && is_return_value_captured(visited_defs, call))
+	if (is_negative_nocapture_arg(fndecl, -arg_num) &&
+				is_return_value_captured(visited_defs, call))
 		return false;
 
 	return is_stmt_nocapture_arg(call, arg_num);
@@ -746,8 +774,11 @@ static bool has_nocapture_param(const_tree fndecl)
 		return true;
 
 	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
-	if (attr == NULL_TREE)
-		attr = lookup_attribute("format", TYPE_ATTRIBUTES(TREE_TYPE(fndecl)));
+	if (attr == NULL_TREE) {
+		const_tree type = TREE_TYPE(fndecl);
+
+		attr = lookup_attribute("format", TYPE_ATTRIBUTES(type));
+	}
 	return attr != NULL_TREE;
 }
 
@@ -830,7 +861,8 @@ static bool search_return_capture_use(const greturn *ret_stmt)
 	return has_capture_use;
 }
 
-static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *visited_defs, tree_set *use_visited, tree node)
+static void has_capture_use_ssa_var(bool *has_capture_use,
+		gimple_set *visited_defs, tree_set *use_visited, tree node)
 {
 	imm_use_iterator imm_iter;
 	use_operand_p use_p;
@@ -887,21 +919,26 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *visited_d
 				return;
 
 			lhs = gimple_assign_lhs(assign);
-			has_capture_use_ssa_var(has_capture_use, visited_defs, use_visited, lhs);
+			has_capture_use_ssa_var(has_capture_use, visited_defs,
+							use_visited, lhs);
 			return;
 		}
 
 		case GIMPLE_PHI: {
 			tree result = gimple_phi_result(use_stmt);
 
-			has_capture_use_ssa_var(has_capture_use, visited_defs, use_visited, result);
+			has_capture_use_ssa_var(has_capture_use, visited_defs,
+							use_visited, result);
 			return;
 		}
 
-		case GIMPLE_RETURN:
-			if (search_return_capture_use(as_a_const_greturn(use_stmt)))
+		case GIMPLE_RETURN: {
+			const greturn *ret_stmt = as_a_const_greturn(use_stmt);
+
+			if (search_return_capture_use(ret_stmt))
 				goto true_out;
 			return;
+		}
 
 		default:
 			debug_tree(node);
@@ -921,7 +958,8 @@ static bool search_capture_ssa_use(gimple_set *visited_defs, tree node)
 	bool has_capture_use = false;
 
 	use_visited = tree_pointer_set_create();
-	has_capture_use_ssa_var(&has_capture_use, visited_defs, use_visited, node);
+	has_capture_use_ssa_var(&has_capture_use, visited_defs, use_visited,
+									node);
 	pointer_set_destroy(use_visited);
 
 	return has_capture_use;
@@ -959,7 +997,8 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 			gcc_assert(i >= 3);
 			arg_num = i - 2;
 
-			if (is_call_arg_nocapture(visited_defs, as_a_const_gcall(stmt), arg_num))
+			if (is_call_arg_nocapture(visited_defs,
+					as_a_const_gcall(stmt), arg_num))
 				break;
 			gcc_assert(get_init_exit_section(vardecl) == NONE);
 			goto true_out;
@@ -1153,7 +1192,8 @@ static tree initify_create_new_var(tree type)
 	return new_var;
 }
 
-static void initify_create_new_phi_arg(gimple_set *visited_defs, tree ssa_var, gphi *stmt, unsigned int i)
+static void initify_create_new_phi_arg(gimple_set *visited_defs, tree ssa_var,
+						gphi *stmt, unsigned int i)
 {
 	gassign *assign;
 	gimple_stmt_iterator gsi;
@@ -1183,7 +1223,8 @@ static void initify_create_new_phi_arg(gimple_set *visited_defs, tree ssa_var, g
 
 	loc = gimple_location(stmt);
 	str = get_string_cst(arg);
-	inform(loc, "initified local var, phi arg: %E: [%E]", current_function_decl, str);
+	inform(loc, "initified local var, phi arg: %E: [%E]",
+						current_function_decl, str);
 }
 
 static void set_section_phi(bool *has_str_cst, gimple_set *visited, gphi *stmt)
@@ -1204,7 +1245,8 @@ static void set_section_phi(bool *has_str_cst, gimple_set *visited, gphi *stmt)
 	}
 }
 
-static void search_constant_strings(bool *has_str_cst, gimple_set *visited, tree node)
+static void search_constant_strings(bool *has_str_cst, gimple_set *visited,
+								tree node)
 {
 	gimple def_stmt;
 	const_tree parm_decl;
@@ -1289,7 +1331,8 @@ static void search_var_param(gcall *stmt)
 			continue;
 
 		fndecl = gimple_call_fndecl(stmt);
-		if (is_negative_nocapture_arg(fndecl, -(num + 1)) && is_return_value_captured(visited, stmt))
+		if (is_negative_nocapture_arg(fndecl, -(num + 1)) &&
+				is_return_value_captured(visited, stmt))
 			continue;
 
 		if (is_fndecl_nocapture_arg(fndecl, num + 1) != NONE_ATTRIBUTE)
@@ -1316,7 +1359,8 @@ static void search_str_param(gcall *stmt)
 			continue;
 
 		fndecl = gimple_call_fndecl(stmt);
-		if (is_negative_nocapture_arg(fndecl, -(num + 1)) && is_return_value_captured(visited, stmt))
+		if (is_negative_nocapture_arg(fndecl, -(num + 1)) &&
+				is_return_value_captured(visited, stmt))
 			continue;
 
 		if (is_fndecl_nocapture_arg(fndecl, num + 1) != NONE_ATTRIBUTE)
@@ -1351,8 +1395,8 @@ static void search_const_strs(void)
 }
 
 /*
- * Verify the data flows of the uses of function arguments marked by the nocapture attribute.
- * The printf attribute is ignored temporarily.
+ * Verify the data flows of the uses of function arguments marked by the
+ * nocapture attribute. The printf attribute is ignored temporarily.
  */
 static void verify_nocapture_functions(void)
 {
@@ -1370,21 +1414,27 @@ static void verify_nocapture_functions(void)
 	for (i = 0; i < len; i++) {
 		const_tree arg;
 
-		if (is_fndecl_nocapture_arg(current_function_decl, i + 1) != NOCAPTURE)
+		if (is_fndecl_nocapture_arg(current_function_decl, i + 1) !=
+								NOCAPTURE)
 			continue;
 
 		arg = chain_index(i, arg_list);
 		gcc_assert(arg != NULL_TREE);
 
 		if (has_capture_use_local_var(arg)) {
-			error("%qE captures its %u (%qD) parameter, please remove it from the nocapture attribute.", current_function_decl, i + 1, arg);
+			error("%qE captures its %u (%qD) parameter, please remove it from the nocapture attribute.",
+					current_function_decl, i + 1, arg);
 			gcc_unreachable();
 		}
 	}
 }
 
-/* Find and move constant strings to the proper init or exit read-only data section. */
-static unsigned int initify_function_transform(struct cgraph_node *node __unused)
+/*
+ * Find and move constant strings to the proper init or exit read-only
+ * data section.
+ */
+static unsigned int initify_function_transform(
+					struct cgraph_node *node __unused)
 {
 	verify_nocapture_functions();
 
@@ -1549,8 +1599,9 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	tree section_str, attr_args, fndecl = NODE_DECL(node);
 
 	/*
-	 * If the function is a candidate for both __init and __exit and enable_init_to_exit_moves is false
-	 * then these functions arent't moved to the exit section.
+	 * If the function is a candidate for both __init and __exit and enable
+	 * _init_to_exit_moves is false then these functions arent't moved
+	 * to the exit section.
 	 */
 	if (NODE_SYMBOL(node)->aux == (void *)BOTH) {
 		if (enable_init_to_exit_moves)
@@ -1714,8 +1765,10 @@ int plugin_init(struct plugin_name_args *plugin_info,
 
 	register_callback(plugin_name, PLUGIN_INFO, NULL, &initify_plugin_info);
 	if (enabled) {
-		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &initify_info);
-		register_callback(plugin_name, PLUGIN_START_UNIT, initify_start_unit, NULL);
+		register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP, NULL,
+								&initify_info);
+		register_callback(plugin_name, PLUGIN_START_UNIT,
+						initify_start_unit, NULL);
 	}
 	register_callback(plugin_name, PLUGIN_ATTRIBUTES, register_attributes,
 									NULL);
