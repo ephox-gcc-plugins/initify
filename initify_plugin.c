@@ -384,6 +384,7 @@ static bool is_syscall(const_tree fn)
 	return false;
 }
 
+/* These builtins are nocapture functions. */
 static bool allowed_builtins(const_tree fn)
 {
 	const char *name = DECL_NAME_POINTER(fn);
@@ -414,6 +415,7 @@ static enum attribute_type search_argnum_in_attribute_params(const_tree attr, in
 	return NONE_ATTRIBUTE;
 }
 
+/* Check that fn_arg_num is a nocapture argument, handle cloned functions too. */
 static enum attribute_type lookup_nocapture_argument(const_tree fndecl, const_tree attr, int fn_arg_num, int fntype_arg_len)
 {
 	const_tree orig_decl, clone_arg, orig_arg;
@@ -455,6 +457,7 @@ static enum attribute_type lookup_nocapture_argument(const_tree fndecl, const_tr
 	return NONE_ATTRIBUTE;
 }
 
+/* Check whether the function argument is nocapture. */
 static enum attribute_type is_fndecl_nocapture_arg(const_tree fndecl, int fn_arg_num)
 {
 	const_tree attr, type;
@@ -491,6 +494,7 @@ static enum attribute_type is_fndecl_nocapture_arg(const_tree fndecl, int fn_arg
 	return lookup_nocapture_argument(fndecl, attr, fn_arg_num, fntype_arg_len);
 }
 
+/* Check whether arg_num is a nocapture argument that can be returned. */
 static bool is_negative_nocapture_arg(const_tree fndecl, int arg_num)
 {
 	const_tree attr, attr_val;
@@ -514,6 +518,7 @@ static bool is_negative_nocapture_arg(const_tree fndecl, int arg_num)
 		if (attr_arg_val == arg_num)
 			return true;
 	}
+
 	return false;
 }
 
@@ -622,6 +627,7 @@ static bool is_stmt_nocapture_arg(const gcall *stmt, unsigned int arg_num)
 	return false;
 }
 
+/* Find the argument position of arg. */
 static unsigned int get_arg_num(const gcall *call, const_tree arg)
 {
 	unsigned idx;
@@ -638,6 +644,7 @@ static unsigned int get_arg_num(const gcall *call, const_tree arg)
 	gcc_unreachable();
 }
 
+/* Determine if the variable uses are only in nocapture functions. */
 static bool only_nocapture_call(const_tree decl)
 {
 	struct cgraph_edge *e;
@@ -668,6 +675,7 @@ static bool only_nocapture_call(const_tree decl)
 	return has_call;
 }
 
+/* Determine if all uses of a va_format typed variable are nocapture. */
 static bool is_va_format_use_nocapture(const_tree node)
 {
 	const_tree decl, type;
@@ -685,6 +693,7 @@ static bool is_va_format_use_nocapture(const_tree node)
 	return only_nocapture_call(decl);
 }
 
+/* If there is a cast to integer (from const char) then it is a nocapture data flow */
 static bool is_cast_to_integer_type(gassign *assign)
 {
 	const_tree lhs_type, lhs;
@@ -697,6 +706,7 @@ static bool is_cast_to_integer_type(gassign *assign)
 	return TYPE_MODE(lhs_type) != QImode;
 }
 
+/* Search the uses of a return value. */
 static bool is_return_value_captured(gimple_set *visited_defs, const gcall *call)
 {
 	tree ret = gimple_call_lhs(call);
@@ -705,6 +715,7 @@ static bool is_return_value_captured(gimple_set *visited_defs, const gcall *call
 	return search_capture_ssa_use(visited_defs, ret);
 }
 
+/* Check if arg_num is a nocapture argument. */
 static bool is_call_arg_nocapture(gimple_set *visited_defs, const gcall *call, unsigned int arg_num)
 {
 	tree fndecl = gimple_call_fndecl(call);
@@ -876,6 +887,7 @@ true_out:
 
 }
 
+/* Check all initialized local variables for nocapture uses. */
 static bool is_in_capture_init(const_tree vardecl)
 {
 	unsigned int i __unused;
@@ -1200,6 +1212,7 @@ static void search_str_param(gcall *stmt)
 	pointer_set_destroy(visited);
 }
 
+/* Determine whether the function has at least one nocapture argument. */
 static bool has_nocapture_param(const_tree fndecl)
 {
 	const_tree attr;
@@ -1240,6 +1253,10 @@ static void search_const_strs(void)
 	}
 }
 
+/*
+ * Verify the data flows of the uses of function arguments marked by the nocapture attribute.
+ * The printf attribute is ignored temporarily.
+ */
 static void verify_nocapture_functions(void)
 {
 	int i, len;
