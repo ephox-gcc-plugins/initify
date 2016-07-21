@@ -779,6 +779,10 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *visited_d
 		case GIMPLE_ASSIGN: {
 			tree lhs;
 			gassign *assign = as_a_gassign(use_stmt);
+			const_tree rhs = gimple_assign_rhs1(assign);
+
+			if (TREE_CODE(rhs) == MEM_REF)
+				return;
 
 			if (is_cast_to_integer_type(assign))
 				return;
@@ -859,11 +863,19 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 			gcc_assert(get_init_exit_section(vardecl) == NONE);
 			goto true_out;
 
-		case GIMPLE_ASSIGN:
-			if (!search_capture_ssa_use(visited_defs, gimple_assign_lhs(stmt)))
+		case GIMPLE_ASSIGN: {
+			tree lhs;
+			const_tree rhs = gimple_assign_rhs1(stmt);
+
+			if (TREE_CODE(rhs) == MEM_REF)
+				break;
+
+			lhs = gimple_assign_lhs(stmt);
+			if (!search_capture_ssa_use(visited_defs, lhs))
 				break;
 			gcc_assert(get_init_exit_section(vardecl) == NONE);
 			goto true_out;
+		}
 
 		case GIMPLE_RETURN:
 			if (is_negative_nocapture_arg(current_function_decl, 0))
