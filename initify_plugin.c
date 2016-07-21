@@ -96,6 +96,7 @@ static gimple initify_get_def_stmt(const_tree node)
 
 static void walk_def_stmt(bool *has_str_cst, gimple_set *visited, tree node);
 static bool has_capture_use_local_var(const_tree vardecl);
+static bool search_capture_ssa_use(tree node);
 
 #define FUNCTION_PTR_P(node) \
 	(TREE_CODE(TREE_TYPE(node)) == POINTER_TYPE && \
@@ -419,16 +420,24 @@ static enum attribute_type is_nocapture_param(const_tree fndecl, int fn_arg_coun
 	return search_attribute_param(attr, fn_arg_count, fntype_arg_len);
 }
 
-static bool has_negative_nocapture_attrib(void)
+static bool is_negative_nocapture_arg(const_tree fndecl, int arg_count)
 {
 	const_tree attr, attr_val;
 
-	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(current_function_decl));
+	gcc_assert(arg_count <= 0);
+
+	attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(fndecl));
 	if (attr == NULL_TREE)
 		return false;
 
 	for (attr_val = TREE_VALUE(attr); attr_val; attr_val = TREE_CHAIN(attr_val)) {
-		if (tree_int_cst_lt(TREE_VALUE(attr_val), integer_zero_node))
+		int attr_arg_val;
+
+		if (arg_count == 0 && tree_int_cst_lt(TREE_VALUE(attr_val), integer_zero_node))
+			return true;
+
+		attr_arg_val = (int)tree_to_shwi(TREE_VALUE(attr_val));
+		if (attr_arg_val == arg_count)
 			return true;
 	}
 	return false;
@@ -566,7 +575,7 @@ static bool only_nocapture_call(const_tree decl)
 	caller = cgraph_get_node(current_function_decl);
 	for (e = caller->callees; e; e = e->next_callee) {
 		unsigned int idx;
-		const gcall *call = e->call_stmt;
+		const gcall *call = as_a_const_gcall(e->call_stmt);
 
 		for (idx = 0; idx < gimple_call_num_args(call); idx++) {
 			const_tree arg = gimple_call_arg(call, idx);
@@ -618,6 +627,28 @@ static bool cast_to_integer_type(gassign *assign)
 	return TYPE_MODE(lhs_type) != QImode;
 }
 
+static bool capture_return_value_use(const gcall *call)
+{
+	tree ret = gimple_return_retval(call);
+
+	gcc_assert(ret != NULL_TREE);
+	return search_capture_ssa_use(ret);
+}
+
+static bool is_nocapture_call_arg(const gcall *call, unsigned int arg_count)
+{
+	const_tree fndecl = gimple_call_fndecl(call);
+
+	gcc_assert(fndecl != NULL_TREE);
+	if (!strncmp(DECL_NAME_POINTER(fndecl), "is_kernel_rodata", 16))
+		return true;
+
+	if (is_negative_nocapture_arg(fndecl, -arg_count) && capture_return_value_use(call))
+		return false;
+
+	return is_nocapture_arg(call, arg_count);
+}
+
 static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visited, tree node)
 {
 	imm_use_iterator imm_iter;
@@ -652,18 +683,12 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 			goto true_out;
 
 		case GIMPLE_CALL: {
-			unsigned int arg_count;
 			const gcall *call = as_a_const_gcall(use_stmt);
-			const_tree fndecl = gimple_call_fndecl(call);
+			unsigned int arg_count = get_arg_count(call, node);
 
-			gcc_assert(fndecl != NULL_TREE);
-			if (!strncmp(DECL_NAME_POINTER(fndecl), "is_kernel_rodata", 16))
+			if (is_nocapture_call_arg(call, arg_count))
 				return;
-
-			arg_count = get_arg_count(call, node);
-			if (!is_nocapture_arg(call, arg_count))
-				goto true_out;
-			return;
+			goto true_out;
 		}
 
 		case GIMPLE_ASSIGN: {
@@ -686,7 +711,7 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *use_visit
 		}
 
 		case GIMPLE_RETURN:
-			if (has_negative_nocapture_attrib())
+			if (is_negative_nocapture_arg(current_function_decl, 0))
 				return;
 			goto true_out;
 
@@ -743,7 +768,7 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 			gcc_assert(i >= 3);
 			arg_count = i - 2;
 
-			if (is_nocapture_arg(as_a_const_gcall(stmt), arg_count))
+			if (is_nocapture_call_arg(as_a_const_gcall(stmt), arg_count))
 				break;
 			gcc_assert(get_init_exit_section(vardecl) == NONE);
 			return true;
@@ -754,6 +779,10 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 			gcc_assert(get_init_exit_section(vardecl) == NONE);
 			return true;
 
+		case GIMPLE_RETURN:
+			if (is_negative_nocapture_arg(current_function_decl, 0))
+				break;
+			return true;
 		default:
 			debug_tree(vardecl);
 			debug_gimple_stmt(stmt);
@@ -1047,7 +1076,10 @@ static void search_var_param(gcall *stmt)
 		type = TREE_TYPE(TREE_TYPE(arg));
 		if (!TYPE_STRING_FLAG(type))
 			continue;
+
 		fndecl = gimple_call_fndecl(stmt);
+		if (is_negative_nocapture_arg(fndecl, -(num + 1)) && capture_return_value_use(stmt))
+			continue;
 		if (is_nocapture_param(fndecl, num + 1) == NONE_ATTRIBUTE)
 			continue;
 
@@ -1071,6 +1103,9 @@ static void search_str_param(gcall *stmt)
 			continue;
 
 		fndecl = gimple_call_fndecl(stmt);
+		if (is_negative_nocapture_arg(fndecl, -(num + 1)) && capture_return_value_use(stmt))
+			continue;
+
 		if (is_nocapture_param(fndecl, num + 1) != NONE_ATTRIBUTE)
 			set_section_call_assign(stmt, arg, num);
 	}

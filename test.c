@@ -2,6 +2,8 @@
 
 initified local var: _1_YES_print_exit: _1_YES_print_exit
 initified local var: _1_YES_print_init: _1_YES_print_init
+initified function arg: print_simple_should_init.isra.0.constprop: ["2. YES %s"]
+initified function arg: print_simple_should_init.isra.0.constprop: ["3. YES\012"]
 initified function arg: _1_YES_print_init: ["4. YES %s %s %s"]
 initified function arg: _1_YES_print_init: ["5. YES"]
 initified function arg: _1_YES_print_init: ["6. YES"]
@@ -25,6 +27,7 @@ initified function arg: _1_YES_print_init: ["23. YES"]
 initified local var, phi arg: _1_YES_print_init: ["24. YES"]
 initified local var, phi arg: _1_YES_print_init: ["25. YES"]
 initified local var, phi arg: _1_YES_print_exit: ["26. YES"]
+initified function arg: _1_YES_print_init: ["28. YES"]
 
 objdump -s -j .init.rodata.str test
 objdump -s -j .exit.rodata.str test
@@ -36,6 +39,7 @@ __init attribute is missing from the 'print_simple_should_init.isra' function
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdbool.h>
 
 #define __section(S) __attribute__ ((__section__(#S)))
 #define __init __section(.init.text)
@@ -124,7 +128,7 @@ static int __nocapture(1) print_simple_4(const char *format)
 	return printf(format, format, format);
 }
 
-static const char * __attribute__((nocapture(-1))) print_simple_5(const char *format)
+static const char * __nocapture(-1) print_simple_5(const char *format)
 {
 	printf(format, format, format);
 	return format;
@@ -141,10 +145,17 @@ void __exit _1_YES_print_exit(const char *str)
 	print_simple_4(str?__func__:"26. YES");
 }
 
-void __init _1_YES_print_init(const char *str)
+struct global_struct {
+	const char *str;
+	const char *str_3;
+};
+
+static struct global_struct strs;
+
+bool __init _1_YES_print_init(const char *str)
 {
 	unsigned int i;
-	const char *local_str, *local_str_2;
+	const char *local_str, *local_str_2, *str_3, *local_str_3;
 	int (*print_fn)(const char *format);
 	static const char static_str[] = "NO_cicamica";
 
@@ -153,6 +164,7 @@ void __init _1_YES_print_init(const char *str)
 	if (!str) {
 		local_str = "24. YES";
 		local_str_2 = "12. NO";
+		local_str_3 = "50. NO";
 	} else {
 		local_str = "25. YES";
 		local_str_2 = "13. NO";
@@ -176,13 +188,18 @@ void __init _1_YES_print_init(const char *str)
 	print_vararg_3("19. YES", "10. NO", "11. NO %s %s %s");
 	print_simple_3("22. YES", "23. YES");
 
-	print_simple_5("28. YES");
+	str_3 = print_simple_5("28. YES");
+	if (str && str_3)
+		return true;
+	strs.str = str;
+	strs.str_3 = print_simple_5(local_str_3);
+	return false;
 }
 
 void _21_not_init(const char *str)
 {
 	unsigned int i;
-	const char *local_str_2;
+	const char *local_str_2, str_3;
 	static const char static_str[] = "14. NO_cicamica";
 
 	printf("15. NO %s %s\n", static_str, str);
@@ -200,6 +217,7 @@ void _21_not_init(const char *str)
 	print_vararg_2("36. NO", "37. NO", "38. NO %s %s %s", "39. NO", "40. NO", "41. NO");
 	print_vararg_3("42. NO", "43. NO", "44. NO %s %s %s");
 	print_simple_3("45. NO", "46. NO");
+	print_simple_5("49. NO");
 }
 
 void __init _20_YES_func(void)
@@ -256,11 +274,14 @@ void __init _15_NO_func(void)
 	asm("" : : "r"(&__func__));
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
 	static const char str[] = "10. NO";
 
-	_1_YES_print_init(str);
+	if (_1_YES_print_init(argv ? str : argv))
+		printf("AAAA\n");
+	else
+		printf("BBB\n");
 	_12_NO_func();
 	return 0;
 }
