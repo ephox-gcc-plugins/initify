@@ -1000,7 +1000,6 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 			if (is_call_arg_nocapture(visited_defs,
 					as_a_const_gcall(stmt), arg_num))
 				break;
-			gcc_assert(get_init_exit_section(vardecl) == NONE);
 			goto true_out;
 
 		case GIMPLE_ASSIGN: {
