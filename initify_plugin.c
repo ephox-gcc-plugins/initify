@@ -657,7 +657,7 @@ static int get_arg_num(const gcall *call, const_tree arg)
 {
 	int idx;
 
-	for (idx = 0; idx < gimple_call_num_args(call); idx++) {
+	for (idx = 0; idx < (int)gimple_call_num_args(call); idx++) {
 		const_tree cur_arg = gimple_call_arg(call, idx);
 
 		if (cur_arg == arg)
@@ -683,7 +683,7 @@ static bool only_nocapture_call(const_tree decl)
 		int idx;
 		const gcall *call = as_a_const_gcall(e->call_stmt);
 
-		for (idx = 0; idx < gimple_call_num_args(call); idx++) {
+		for (idx = 0; idx < (int)gimple_call_num_args(call); idx++) {
 			const_tree arg = gimple_call_arg(call, idx);
 
 			if (TREE_CODE(arg) != ADDR_EXPR)
@@ -845,14 +845,14 @@ true_out:
 
 static bool search_return_capture_use(const greturn *ret_stmt)
 {
-	tree_set *def_visited;
+	gimple_set *def_visited;
 	tree ret;
 	bool has_capture_use;
 
 	if (is_negative_nocapture_arg(current_function_decl, 0))
 		return false;
 
-	def_visited = tree_pointer_set_create();
+	def_visited = pointer_set_create();
 	ret = gimple_return_retval(ret_stmt);
 	has_capture_use = false;
 	walk_def_stmt(&has_capture_use, def_visited, ret);
@@ -1315,7 +1315,7 @@ static void search_var_param(gcall *stmt)
 
 	pointer_set_insert(visited, stmt);
 
-	for (num = 0; num < gimple_call_num_args(stmt); num++) {
+	for (num = 0; num < (int)gimple_call_num_args(stmt); num++) {
 		const_tree type, fndecl;
 		bool has_str_cst = true;
 		tree str, arg = gimple_call_arg(stmt, num);
@@ -1350,7 +1350,7 @@ static void search_str_param(gcall *stmt)
 
 	pointer_set_insert(visited, stmt);
 
-	for (num = 0; num < gimple_call_num_args(stmt); num++) {
+	for (num = 0; num < (int)gimple_call_num_args(stmt); num++) {
 		const_tree fndecl;
 		tree str, arg = gimple_call_arg(stmt, num);
 
