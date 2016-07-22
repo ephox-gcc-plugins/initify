@@ -393,6 +393,8 @@ static bool allowed_builtins(const_tree fn)
 		return true;
 	if (!strcmp(name, "__builtin_expect"))
 		return true;
+	if (!strcmp(name, "__builtin_memcpy"))
+		return true;
 	return false;
 }
 
