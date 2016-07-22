@@ -811,14 +811,14 @@ true_out:
 
 static bool search_return_capture_use(const greturn *ret_stmt)
 {
-	tree_set *def_visited;
+	gimple_set *def_visited;
 	tree ret;
 	bool has_capture_use;
 
 	if (is_negative_nocapture_arg(current_function_decl, 0))
 		return false;
 
-	def_visited = tree_pointer_set_create();
+	def_visited = pointer_set_create();
 	ret = gimple_return_retval(ret_stmt);
 	has_capture_use = false;
 	walk_def_stmt(&has_capture_use, def_visited, ret);
