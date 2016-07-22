@@ -41,7 +41,7 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20160721vanilla",
+	.version	=	"20160722vanilla",
 	.help		=	"disable\tturn off the initify plugin\n"
 				"verbose\tprint all initified strings and all"
 				" functions which should be __init/__exit\n"
@@ -404,6 +404,8 @@ static bool allowed_builtins(const_tree fn)
 	if (!strcmp(name, "__builtin_va_start"))
 		return true;
 	if (!strcmp(name, "__builtin_expect"))
+		return true;
+	if (!strcmp(name, "__builtin_memcpy"))
 		return true;
 	return false;
 }
