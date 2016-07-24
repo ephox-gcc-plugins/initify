@@ -21,6 +21,7 @@
  * -fplugin-arg-initify_plugin-print_missing_attr
  * -fplugin-arg-initify_plugin-search_init_exit_functions
  * -fplugin-arg-initify_plugin-enable_init_to_exit_moves
+ * -fplugin-arg-initify_plugin-disable_verify_nocapture_functions
  *
  * Attribute: __attribute__((nocapture(x, y ...)))
  *  The nocapture gcc attribute can be on functions only.
@@ -41,7 +42,7 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20160722",
+	.version	=	"20160724",
 	.help		=	"disable\tturn off the initify plugin\n"
 				"verbose\tprint all initified strings and all"
 				" functions which should be __init/__exit\n"
@@ -53,10 +54,14 @@ static struct plugin_info initify_plugin_info = {
 				"enable_init_to_exit_moves\tmove a function"
 				" to the exit section if it is called by __init"
 				" and __exit functions too\n"
+				"disable_verify_nocapture_functions\tdisable"
+				" the search of capture uses in nocapture"
+				" functions\n"
 };
 
 #define ARGNUM_NONE 0
-static bool verbose, print_missing_attr, search_init_exit_functions, enable_init_to_exit_moves;
+static bool verbose, print_missing_attr, search_init_exit_functions;
+static bool enable_init_to_exit_moves, disable_verify_nocapture_functions;
 
 enum section_type {
 	INIT, EXIT, BOTH, NONE
@@ -1354,6 +1359,9 @@ static void verify_nocapture_functions(void)
 	int i, len;
 	tree arg_list;
 
+	if (disable_verify_nocapture_functions)
+		return;
+
 	if (is_syscall(current_function_decl))
 		return;
 
@@ -1686,6 +1694,11 @@ int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version 
 		}
 		if (!strcmp(argv[i].key, "enable_init_to_exit_moves")) {
 			enable_init_to_exit_moves = true;
+			continue;
+		}
+
+		if (!strcmp(argv[i].key, "disable_verify_nocapture_functions")) {
+			disable_verify_nocapture_functions = true;
 			continue;
 		}
 
