@@ -931,6 +931,29 @@ static bool search_capture_ssa_use(gimple_set *visited_defs, tree node)
 	return has_capture_use;
 }
 
+static bool lhs_is_a_nocapture_parm_decl(const_tree lhs)
+{
+	int arg_idx, len;
+	tree arg_list;
+
+	if (TREE_CODE(lhs) != PARM_DECL)
+		return false;
+
+	arg_list = DECL_ARGUMENTS(current_function_decl);
+	len = list_length(arg_list);
+
+	for (arg_idx = 0; arg_idx < len; arg_idx++) {
+		const_tree arg = chain_index(arg_idx, arg_list);
+
+		if (arg == lhs)
+			return is_fndecl_nocapture_arg(current_function_decl, arg_idx + 1) != NONE_ATTRIBUTE;
+	}
+
+	debug_tree(current_function_decl);
+	debug_tree(lhs);
+	gcc_unreachable();
+}
+
 static bool search_capture_use(const_tree vardecl, gimple stmt)
 {
 	unsigned int i;
@@ -975,6 +998,9 @@ static bool search_capture_use(const_tree vardecl, gimple stmt)
 				break;
 
 			lhs = gimple_assign_lhs(stmt);
+			if (lhs_is_a_nocapture_parm_decl(lhs))
+				break;
+
 			if (!search_capture_ssa_use(visited_defs, lhs))
 				break;
 			gcc_assert(get_init_exit_section(vardecl) == NONE);
