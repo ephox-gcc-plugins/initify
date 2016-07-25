@@ -32,6 +32,11 @@
  *  There can be one negative value which means that the return of the function
  *  will be followed to find it is a nocapture attribute or not.
  *
+ * Attribute: __attribute__((unverified_nocapture(x, y ...)))
+ *  This attribute disables the compile data flow verification of the designated
+ *  nocapture parameters of the function. Use it only on function parameters
+ *  that are difficult for the plugin to analyze.
+ *
  * Usage:
  * $ make
  * $ make run
@@ -68,7 +73,7 @@ enum section_type {
 };
 
 enum attribute_type {
-	NOCAPTURE, PRINTF, BUILTINS, SYSCALL, NONE_ATTRIBUTE
+	UNVERIFIED, NOCAPTURE, PRINTF, BUILTINS, SYSCALL, NONE_ATTRIBUTE
 };
 
 
@@ -147,9 +152,18 @@ static bool is_vararg_arg(tree arg_list, unsigned int num)
 	return num >= (unsigned int)list_length(arg_list);
 }
 
+static const_tree get_ptr_type(const_tree type)
+{
+	gcc_assert(type != NULL_TREE);
+
+	if (TREE_CODE(type) != POINTER_TYPE)
+		return type;
+	return get_ptr_type(TREE_TYPE(type));
+}
+
 static bool check_parameter(tree *node, tree type_args, int idx)
 {
-	const_tree type_arg, type, type_type, type_name;
+	const_tree type_arg, type, type_type, type_name, ptr_type;
 
 	if (is_vararg_arg(type_args, idx))
 		return true;
@@ -169,12 +183,13 @@ static bool check_parameter(tree *node, tree type_args, int idx)
 		return false;
 	}
 
-	if (!TYPE_READONLY(type_type)) {
+	ptr_type = get_ptr_type(type_type);
+	if (!TYPE_READONLY(ptr_type)) {
 		error("%u. parameter of the %qE function must be readonly", idx, *node);
 		return false;
 	}
 
-	if (TREE_THIS_VOLATILE(type_type)) {
+	if (TREE_THIS_VOLATILE(ptr_type)) {
 		error("%u. parameter of the %qE function can't be volatile", idx, *node);
 		return false;
 	}
@@ -236,11 +251,10 @@ static bool check_all_parameters(tree *node, tree type_args)
  *    it applies to all of them that have no other uses.
  *  * attribute value 0 is ignored to allow reusing print attribute arguments
  */
-static tree handle_nocapture_attribute(tree *node, tree name, tree args, int __unused flags, bool *no_add_attrs)
+static bool handle_initify_attributes(tree *node, tree name, tree args)
 {
-	tree orig_attr, type_args = NULL_TREE;
+	tree type_args = NULL_TREE;
 
-	*no_add_attrs = true;
 	switch (TREE_CODE(*node)) {
 	case FUNCTION_DECL:
 		type_args = TYPE_ARG_TYPES(TREE_TYPE(*node));
@@ -269,20 +283,46 @@ static tree handle_nocapture_attribute(tree *node, tree name, tree args, int __u
 	default:
 		debug_tree(*node);
 		error("%s: %qE attribute only applies to functions", __func__, name);
-		return NULL_TREE;
+		return false;
 	}
 
 	gcc_assert(type_args != NULL_TREE);
 
 	if (!check_marked_parameters(node, type_args, args, name))
+		return false;
+	return args != NULL_TREE || check_all_parameters(node, type_args);
+}
+
+static tree handle_nocapture_attribute(tree *node, tree name, tree args, int __unused flags, bool *no_add_attrs)
+{
+	tree nocapture_attr;
+
+	*no_add_attrs = true;
+
+	if (!handle_initify_attributes(node, name, args))
 		return NULL_TREE;
 
-	if (args == NULL_TREE && !check_all_parameters(node, type_args))
+	nocapture_attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(*node));
+	if (nocapture_attr)
+		chainon(TREE_VALUE(nocapture_attr), args);
+	else
+		*no_add_attrs = false;
+
+	return NULL_TREE;
+}
+
+static tree handle_unverified_nocapture_attribute(tree *node, tree name, tree args, int __unused flags, bool *no_add_attrs)
+{
+	tree unverified_attr;
+
+	*no_add_attrs = true;
+
+	if (!handle_initify_attributes(node, name, args))
 		return NULL_TREE;
 
-	orig_attr = lookup_attribute("nocapture", DECL_ATTRIBUTES(*node));
-	if (orig_attr)
-		chainon(TREE_VALUE(orig_attr), args);
+	unverified_attr = lookup_attribute("unverified_nocapture", DECL_ATTRIBUTES(*node));
+	if (unverified_attr)
+		chainon(TREE_VALUE(unverified_attr), args);
 	else
 		*no_add_attrs = false;
 
@@ -302,9 +342,23 @@ static struct attribute_spec nocapture_attr = {
 #endif
 };
 
+static struct attribute_spec unverified_nocapture_attr = {
+	.name				= "unverified_nocapture",
+	.min_length			= 0,
+	.max_length			= -1,
+	.decl_required			= true,
+	.type_required			= false,
+	.function_type_required		= false,
+	.handler			= handle_unverified_nocapture_attribute,
+#if BUILDING_GCC_VERSION >= 4007
+	.affects_type_identity		= false
+#endif
+};
+
 static void register_attributes(void __unused *event_data, void __unused *data)
 {
 	register_attribute(&nocapture_attr);
+	register_attribute(&unverified_nocapture_attr);
 }
 
 /* Determine whether the function is in the init or exit sections. */
@@ -467,8 +521,8 @@ static enum attribute_type lookup_nocapture_argument(const_tree fndecl, const_tr
 /* Check whether the function argument is nocapture. */
 static enum attribute_type is_fndecl_nocapture_arg(const_tree fndecl, int fn_arg_num)
 {
-	const_tree attr, type;
 	int fntype_arg_len;
+	const_tree type, attr = NULL_TREE;
 	bool fnptr = FUNCTION_PTR_P(fndecl);
 
 	if (!fnptr && is_syscall(fndecl))
@@ -483,6 +537,11 @@ static enum attribute_type is_fndecl_nocapture_arg(const_tree fndecl, int fn_arg
 		type = TREE_TYPE(fndecl);
 
 	fntype_arg_len = type_num_arguments(type);
+
+	if (!fnptr)
+		attr = lookup_attribute("unverified_nocapture", DECL_ATTRIBUTES(fndecl));
+	if (attr != NULL_TREE && lookup_nocapture_argument(fndecl, attr, fn_arg_num, fntype_arg_len) != NONE_ATTRIBUTE)
+		return UNVERIFIED;
 
 	attr = lookup_attribute("format", TYPE_ATTRIBUTES(type));
 	if (attr != NULL_TREE && lookup_nocapture_argument(fndecl, attr, fn_arg_num, fntype_arg_len) != NONE_ATTRIBUTE)
