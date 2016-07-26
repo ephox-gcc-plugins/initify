@@ -47,7 +47,7 @@
 int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20160725vanilla",
+	.version	=	"20160726vanilla",
 	.help		=	"disable\tturn off the initify plugin\n"
 				"verbose\tprint all initified strings and all"
 				" functions which should be __init/__exit\n"
@@ -929,6 +929,29 @@ static bool search_return_capture_use(const greturn *ret_stmt)
 	return has_capture_use;
 }
 
+static bool lhs_is_a_nocapture_parm_decl(const_tree lhs)
+{
+	int arg_idx, len;
+	tree arg_list;
+
+	if (TREE_CODE(lhs) != PARM_DECL)
+		return false;
+
+	arg_list = DECL_ARGUMENTS(current_function_decl);
+	len = list_length(arg_list);
+
+	for (arg_idx = 0; arg_idx < len; arg_idx++) {
+		const_tree arg = chain_index(arg_idx, arg_list);
+
+		if (arg == lhs)
+			return is_fndecl_nocapture_arg(current_function_decl, arg_idx + 1) != NONE_ATTRIBUTE;
+	}
+
+	debug_tree(current_function_decl);
+	debug_tree(lhs);
+	gcc_unreachable();
+}
+
 static void has_capture_use_ssa_var(bool *has_capture_use,
 		gimple_set *visited_defs, tree_set *use_visited, tree node)
 {
@@ -942,6 +965,9 @@ static void has_capture_use_ssa_var(bool *has_capture_use,
 		return;
 
 	if (is_va_format_use_nocapture(node))
+		return;
+
+	if (lhs_is_a_nocapture_parm_decl(node))
 		return;
 
 	if (TREE_CODE(node) != SSA_NAME)
@@ -1031,30 +1057,6 @@ static bool search_capture_ssa_use(gimple_set *visited_defs, tree node)
 	pointer_set_destroy(use_visited);
 
 	return has_capture_use;
-}
-
-static bool lhs_is_a_nocapture_parm_decl(const_tree lhs)
-{
-	int arg_idx, len;
-	tree arg_list;
-
-	if (TREE_CODE(lhs) != PARM_DECL)
-		return false;
-
-	arg_list = DECL_ARGUMENTS(current_function_decl);
-	len = list_length(arg_list);
-
-	for (arg_idx = 0; arg_idx < len; arg_idx++) {
-		const_tree arg = chain_index(arg_idx, arg_list);
-
-		if (arg == lhs)
-			return is_fndecl_nocapture_arg(current_function_decl,
-						arg_idx + 1) != NONE_ATTRIBUTE;
-	}
-
-	debug_tree(current_function_decl);
-	debug_tree(lhs);
-	gcc_unreachable();
 }
 
 static bool search_capture_use(const_tree vardecl, gimple stmt)
