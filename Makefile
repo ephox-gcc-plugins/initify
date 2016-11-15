@@ -19,7 +19,7 @@ else
 PLUGIN_FLAGS += -std=gnu++98 -fno-rtti -Wno-narrowing -Og
 endif
 
-PLUGIN_FLAGS += -fPIC -shared -ggdb -Wall -W
+PLUGIN_FLAGS += -fPIC -shared -ggdb -Wall -W  -fvisibility=hidden
 
 all: $(PROG)
 
