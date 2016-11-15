@@ -944,7 +944,7 @@ static void has_capture_use_ssa_var(bool *has_capture_use, gimple_set *visited_d
 		if (is_gimple_debug(use_stmt))
 			continue;
 
-		if (pointer_set_contains(visited_defs, use_stmt))
+		if (pointer_set_insert(visited_defs, use_stmt))
 			continue;
 
 		switch (gimple_code(use_stmt)) {
