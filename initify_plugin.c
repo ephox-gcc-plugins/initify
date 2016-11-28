@@ -47,7 +47,7 @@
 __visible int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20161115",
+	.version	=	"20161129",
 	.help		=	"disable\tturn off the initify plugin\n"
 				"verbose\tprint all initified strings and all"
 				" functions which should be __init/__exit\n"
@@ -1474,10 +1474,8 @@ static void verify_nocapture_functions(void)
 		arg = chain_index(i, arg_list);
 		gcc_assert(arg != NULL_TREE);
 
-		if (has_capture_use_local_var(arg)) {
-			error("%qE captures its %u (%qD) parameter, please remove it from the nocapture attribute.", current_function_decl, i + 1, arg);
-			gcc_unreachable();
-		}
+		if (has_capture_use_local_var(arg))
+			warning(0, "%qE captures its %u (%qD) parameter, please remove it from the nocapture attribute.", current_function_decl, i + 1, arg);
 	}
 }
 
