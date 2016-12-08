@@ -47,7 +47,7 @@
 __visible int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20161129",
+	.version	=	"20161208",
 	.help		=	"disable\tturn off the initify plugin\n"
 				"verbose\tprint all initified strings and all"
 				" functions which should be __init/__exit\n"
@@ -1623,10 +1623,10 @@ static bool can_move_to_init_exit(const_tree fndecl)
 	if (!section_name)
 		return true;
 
-	if (!strcmp(section_name, ".ref.text\000"))
-		return true;
+	if (!strcmp(section_name, ".ref.text"))
+		return false;
 
-	if (!strcmp(section_name, ".meminit.text\000"))
+	if (!strcmp(section_name, ".meminit.text"))
 		return false;
 
 	inform(DECL_SOURCE_LOCATION(fndecl), "Section of %qE: %s\n", fndecl, section_name);
