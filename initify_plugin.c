@@ -1676,7 +1676,7 @@ static void move_function_to_init_exit_text(struct cgraph_node *node)
 	DECL_ATTRIBUTES(fndecl) = copy_list(DECL_ATTRIBUTES(fndecl));
 
 	section_name = NODE_SYMBOL(node)->aux == (void *)INIT ? ".init.text" : ".exit.text";
-	section_str = build_string(strlen(section_name) + 1, section_name);
+	section_str = build_const_char_string(strlen(section_name) + 1, section_name);
 	TREE_READONLY(section_str) = 1;
 	TREE_STATIC(section_str) = 1;
 	attr_args = build_tree_list(NULL_TREE, section_str);
