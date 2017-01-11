@@ -47,7 +47,7 @@
 __visible int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20170102",
+	.version	=	"20170111",
 	.help		=	"disable\tturn off the initify plugin\n"
 				"verbose\tprint all initified strings and all"
 				" functions which should be __init/__exit\n"
@@ -1569,6 +1569,8 @@ static bool inherit_section(struct cgraph_node *callee, struct cgraph_node *call
 	if (curfn_section == EXIT && NODE_SYMBOL(callee)->aux == (void *)INIT)
 		goto both_section;
 
+	if (curfn_section == BOTH && (NODE_SYMBOL(callee)->aux == (void *)INIT || NODE_SYMBOL(callee)->aux == (void *)EXIT))
+		goto both_section;
 	if (!should_init_exit(callee))
 		return false;
 
