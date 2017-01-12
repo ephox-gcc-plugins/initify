@@ -47,7 +47,7 @@
 __visible int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20170111",
+	.version	=	"20170112",
 	.help		=	"disable\tturn off the initify plugin\n"
 				"verbose\tprint all initified strings and all"
 				" functions which should be __init/__exit\n"
@@ -1519,14 +1519,46 @@ static void __unused debug_print_section_type(struct cgraph_node *node)
 	}
 }
 
+static bool has_non_init_caller(struct cgraph_node *callee)
+{
+	struct cgraph_edge *e = callee->callers;
+
+	if (!e)
+		return true;
+
+	for (; e; e = e->next_caller) {
+		enum section_type caller_section;
+		struct cgraph_node *caller = e->caller;
+
+		caller_section = get_init_exit_section(NODE_DECL(caller));
+		if (caller_section == NONE && NODE_SYMBOL(caller)->aux == (void *)NONE)
+			return true;
+	}
+
+	return false;
+}
+
+static void has_non_init_clone(struct cgraph_node *node, bool *has_non_init)
+{
+	if (*has_non_init)
+		return;
+
+	if (has_non_init_caller(node))
+		*has_non_init = true;
+
+	if (node->clones)
+		has_non_init_clone(node->clones, has_non_init);
+	if (node->clone_of)
+		has_non_init_clone(node->clone_of, has_non_init);
+}
+
 /*
  * If the function is called by only __init/__exit functions then it can become
  * an __init/__exit function as well.
  */
 static bool should_init_exit(struct cgraph_node *callee)
 {
-	struct cgraph_edge *e;
-	bool only_init_callers;
+	bool has_non_init;
 	const_tree callee_decl = NODE_DECL(callee);
 
 	if (NODE_SYMBOL(callee)->aux != (void *)NONE)
@@ -1541,30 +1573,19 @@ static bool should_init_exit(struct cgraph_node *callee)
 	if (NODE_SYMBOL(callee)->address_taken)
 		return false;
 
-	e = callee->callers;
-	if (!e)
-		return false;
-
-	only_init_callers = true;
-	for (; e; e = e->next_caller) {
-		enum section_type caller_section;
-		struct cgraph_node *caller = e->caller;
-
-		caller_section = get_init_exit_section(NODE_DECL(caller));
-		if (caller_section == NONE && NODE_SYMBOL(caller)->aux == (void *)NONE)
-			only_init_callers = false;
-	}
-
-	return only_init_callers;
+	has_non_init = false;
+	has_non_init_clone(callee, &has_non_init);
+	return !has_non_init;
 }
 
 static bool inherit_section(struct cgraph_node *callee, struct cgraph_node *caller, enum section_type caller_section)
 {
-	enum section_type callee_section = (enum section_type)(unsigned long)NODE_SYMBOL(callee)->aux;
+	enum section_type callee_section;
 
 	if (caller_section == NONE)
 		caller_section = (enum section_type)(unsigned long)NODE_SYMBOL(caller)->aux;
 
+	callee_section = (enum section_type)(unsigned long)NODE_SYMBOL(callee)->aux;
 	if (caller_section == INIT && callee_section == EXIT)
 		goto both_section;
 
