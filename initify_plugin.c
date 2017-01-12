@@ -1558,24 +1558,27 @@ static bool should_init_exit(struct cgraph_node *callee)
 	return only_init_callers;
 }
 
-static bool inherit_section(struct cgraph_node *callee, struct cgraph_node *caller, enum section_type curfn_section)
+static bool inherit_section(struct cgraph_node *callee, struct cgraph_node *caller, enum section_type caller_section)
 {
-	if (curfn_section == NONE)
-		curfn_section = (enum section_type)(unsigned long)NODE_SYMBOL(caller)->aux;
+	enum section_type callee_section = (enum section_type)(unsigned long)NODE_SYMBOL(callee)->aux;
 
-	if (curfn_section == INIT && NODE_SYMBOL(callee)->aux == (void *)EXIT)
+	if (caller_section == NONE)
+		caller_section = (enum section_type)(unsigned long)NODE_SYMBOL(caller)->aux;
+
+	if (caller_section == INIT && callee_section == EXIT)
 		goto both_section;
 
-	if (curfn_section == EXIT && NODE_SYMBOL(callee)->aux == (void *)INIT)
+	if (caller_section == EXIT && callee_section == INIT)
 		goto both_section;
 
-	if (curfn_section == BOTH && (NODE_SYMBOL(callee)->aux == (void *)INIT || NODE_SYMBOL(callee)->aux == (void *)EXIT))
+	if (caller_section == BOTH && (callee_section == INIT || callee_section == EXIT))
 		goto both_section;
+
 	if (!should_init_exit(callee))
 		return false;
 
-	gcc_assert(NODE_SYMBOL(callee)->aux == (void *)NONE);
-	NODE_SYMBOL(callee)->aux = (void *)curfn_section;
+	gcc_assert(callee_section == NONE);
+	NODE_SYMBOL(callee)->aux = (void *)caller_section;
 	return true;
 
 both_section:
