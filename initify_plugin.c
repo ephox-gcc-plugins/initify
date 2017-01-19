@@ -47,7 +47,7 @@
 __visible int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20170112",
+	.version	=	"20170119",
 	.help		=	"disable\tturn off the initify plugin\n"
 				"verbose\tprint all initified strings and all"
 				" functions which should be __init/__exit\n"
@@ -116,11 +116,34 @@ static inline void pointer_set_destroy(tree_set *visited)
 {
 	delete visited;
 }
+
+typedef struct hash_set<struct cgraph_node *> cgraph_set;
+
+static inline bool pointer_set_insert(cgraph_set *visited, struct cgraph_node *node)
+{
+	return visited->add(node);
+}
+
+static inline cgraph_set* cgraph_pointer_set_create(void)
+{
+	return new hash_set<struct cgraph_node *>;
+}
+
+static inline void pointer_set_destroy(cgraph_set *visited)
+{
+	delete visited;
+}
 #else
 typedef struct pointer_set_t gimple_set;
 typedef struct pointer_set_t tree_set;
+typedef struct pointer_set_t cgraph_set;
 
 static inline tree_set *tree_pointer_set_create(void)
+{
+	return pointer_set_create();
+}
+
+static inline cgraph_set *cgraph_pointer_set_create(void)
 {
 	return pointer_set_create();
 }
@@ -1538,18 +1561,21 @@ static bool has_non_init_caller(struct cgraph_node *callee)
 	return false;
 }
 
-static bool has_non_init_clone(struct cgraph_node *node)
+static bool has_non_init_clone(cgraph_set *visited, struct cgraph_node *node)
 {
 	if (!node)
+		return false;
+
+	if (pointer_set_insert(visited, node))
 		return false;
 
 	if (has_non_init_caller(node))
 		return true;
 
-	if (has_non_init_clone(node->clones))
+	if (has_non_init_clone(visited, node->clones))
 		return true;
 
-	return has_non_init_clone(node->clone_of);
+	return has_non_init_clone(visited, node->clone_of);
 }
 
 /*
@@ -1558,6 +1584,8 @@ static bool has_non_init_clone(struct cgraph_node *node)
  */
 static bool should_init_exit(struct cgraph_node *callee)
 {
+	cgraph_set *visited;
+	bool has_non_init;
 	const_tree callee_decl = NODE_DECL(callee);
 
 	if (NODE_SYMBOL(callee)->aux != (void *)NONE)
@@ -1572,7 +1600,11 @@ static bool should_init_exit(struct cgraph_node *callee)
 	if (NODE_SYMBOL(callee)->address_taken)
 		return false;
 
-	return !has_non_init_clone(callee);
+	visited = cgraph_pointer_set_create();
+	has_non_init = has_non_init_clone(visited, callee);
+	pointer_set_destroy(visited);
+
+	return !has_non_init;
 }
 
 static bool inherit_section(struct cgraph_node *callee, struct cgraph_node *caller, enum section_type caller_section)
