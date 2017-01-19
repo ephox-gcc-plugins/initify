@@ -1538,18 +1538,18 @@ static bool has_non_init_caller(struct cgraph_node *callee)
 	return false;
 }
 
-static void has_non_init_clone(struct cgraph_node *node, bool *has_non_init)
+static bool has_non_init_clone(struct cgraph_node *node)
 {
-	if (*has_non_init)
-		return;
+	if (!node)
+		return false;
 
 	if (has_non_init_caller(node))
-		*has_non_init = true;
+		return true;
 
-	if (node->clones)
-		has_non_init_clone(node->clones, has_non_init);
-	if (node->clone_of)
-		has_non_init_clone(node->clone_of, has_non_init);
+	if (has_non_init_clone(node->clones))
+		return true;
+
+	return has_non_init_clone(node->clone_of);
 }
 
 /*
@@ -1558,7 +1558,6 @@ static void has_non_init_clone(struct cgraph_node *node, bool *has_non_init)
  */
 static bool should_init_exit(struct cgraph_node *callee)
 {
-	bool has_non_init;
 	const_tree callee_decl = NODE_DECL(callee);
 
 	if (NODE_SYMBOL(callee)->aux != (void *)NONE)
@@ -1573,9 +1572,7 @@ static bool should_init_exit(struct cgraph_node *callee)
 	if (NODE_SYMBOL(callee)->address_taken)
 		return false;
 
-	has_non_init = false;
-	has_non_init_clone(callee, &has_non_init);
-	return !has_non_init;
+	return !has_non_init_clone(callee);
 }
 
 static bool inherit_section(struct cgraph_node *callee, struct cgraph_node *caller, enum section_type caller_section)
