@@ -812,7 +812,8 @@ static bool is_call_arg_nocapture(gimple_set *visited_defs, const gcall *call, i
 
 	if (fndecl == NULL_TREE)
 		fndecl = gimple_call_fn(call);
-	gcc_assert(fndecl != NULL_TREE);
+	if (fndecl == NULL_TREE)
+		return false;
 
 	if (is_negative_nocapture_arg(fndecl, -arg_num) && is_return_value_captured(visited_defs, call))
 		return false;
