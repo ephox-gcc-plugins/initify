@@ -47,7 +47,7 @@
 __visible int plugin_is_GPL_compatible;
 
 static struct plugin_info initify_plugin_info = {
-	.version	=	"20170119",
+	.version	=	"20170215",
 	.help		=	"disable\tturn off the initify plugin\n"
 				"verbose\tprint all initified strings and all"
 				" functions which should be __init/__exit\n"
@@ -1176,7 +1176,7 @@ static void find_local_str(void)
 	tree var;
 
 	FOR_EACH_LOCAL_DECL(cfun, i, var) {
-		tree str, init_val;
+		tree str, init_val, asm_name;
 
 		if (TREE_CODE(TREE_TYPE(var)) != ARRAY_TYPE)
 			continue;
@@ -1185,6 +1185,10 @@ static void find_local_str(void)
 		if (init_val == NULL_TREE || init_val == error_mark_node)
 			continue;
 		if (TREE_CODE(init_val) != STRING_CST)
+			continue;
+
+		asm_name = DECL_ASSEMBLER_NAME(var);
+		if (asm_name != NULL_TREE && TREE_SYMBOL_REFERENCED(asm_name))
 			continue;
 
 		if (has_capture_use_local_var(var))
